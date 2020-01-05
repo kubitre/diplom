@@ -1,0 +1,30 @@
+{
+    "baseImage": {
+        "type": "Dockerfile",
+        "payload": [
+            "FROM ubuntu:18.04 as builder",
+            "RUN apt update && apt install --no-cache git",
+            "MAINTAINER kubitre(kubitre@gmail.com)"
+        ],
+        // либо с использованием какого-то готового образа
+        "type": "image",
+        "payload": "kubitre/test_image_testing"
+    },
+    "candidateCode": {
+        "repository": "github.com/kubitre/for_diplom",
+        "private": true,
+        "access_type": 0,
+        "token": ""
+    },
+    "task": [
+        {
+            "id": "uid",
+            "stage": "static_analys_1"
+        }
+        // здесь пока думаю, как лучше сделать (в данной секции предполагаю описывать таски, который надо будет делать над репозиторием кандидата)  
+    ],
+    "report": {
+        ""
+        // здесь будет описываться настройка отчёта на главный бэкэнд
+    }
+}
