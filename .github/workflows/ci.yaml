@@ -16,6 +16,7 @@ jobs:
     - name: Run linters
       run: |
         export PATH=$PATH:$(go env GOPATH)/bin   
+        ls -la
         golangci-lint run
   test:
     strategy:
@@ -57,7 +58,7 @@ jobs:
     - name: Coveralls
       uses: coverallsapp/github-action@v1.0.1
       with:
-          github-token: ${{ secrets.github_token }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path-to-lcov: coverage.lcov
   build:
     runs-on: ubuntu-latest
