@@ -1,0 +1,38 @@
+stages:
+  - lint
+  - build
+  - test
+
+tasks:
+  BuildProject:
+    stage: build
+    image: [
+      "FROM ubuntu:18.04 as env",
+      "COPY dest1 /dest1",
+      "RUN apt update && apt install --no-cache ffmpeg"
+    ]
+    repo: github.com/kubitre/for_diploma
+    run:
+      - go build -o main.bin main.go
+
+  LintProject:
+    stage: lint
+    image: [
+      "FROM ubuntu:18.04 as env",
+      "COPY dest1 /dest1",
+      "RUN apt update && apt install --no-cache ffmpeg"
+    ]
+    repo: github.com/kubitre/for_diploma
+    run: 
+      - golangci-lint ../ > report.xml
+
+  TestProject:
+    stage: test
+    image: [
+      "FROM ubuntu:18.04 as env",
+      "COPY dest1 /dest1",
+      "RUN apt update && apt install --no-cache ffmpeg"
+    ]
+    repo: github.com/kubitre/for_diploma
+    run:
+      - go test ./...
