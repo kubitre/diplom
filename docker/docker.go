@@ -42,15 +42,6 @@ func NewDockerExecutor() (*DockerExecutor, error) {
 // pulling image from hub.docker.com
 func (docker *DockerExecutor) PullImage(image *EnvImage) error {
 	ctx := context.Background()
-	// resp, err := cli.NetworkCreate(ctx, "candidate_id_code", types.NetworkCreate{
-	// 	Attachable: true,
-	// 	Driver:     "bridge",
-	// })
-	// if err != nil {
-	// 	log.Error("Can not create network docker. Error: ", err.Error())
-	// 	return err
-	// }
-	// log.Debug("response from creating network: ", resp)
 	respPulling, errPulling := docker.DockerClient.ImagePull(ctx, image.Image, types.ImagePullOptions{})
 	if errPulling != nil {
 		log.Error("Can npt pulling image. Error: ", errPulling.Error())
