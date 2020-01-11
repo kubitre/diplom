@@ -31,6 +31,8 @@ jobs:
         go-version: ${{ matrix.go-version }}
     - name: Checkout code
       uses: actions/checkout@v1
+    - name: check current docker
+      run: docker version
     - name: Run tests
       run: go test ./... -v -covermode=count
 
