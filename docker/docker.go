@@ -65,7 +65,7 @@ func (docker *DockerExecutor) CreateContainer() error {
 		},
 	}, &container.HostConfig{
 		AutoRemove: true,
-	}, &network.NetworkingConfig{}, "test_env_candidate_1")
+	}, &network.NetworkingConfig{}, "hello-world")
 	if err != nil {
 		log.Error("can not create container with default configuration. Error: ", err.Error())
 		return docker.removeContainer("test_env_candidate_1")
