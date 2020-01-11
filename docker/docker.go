@@ -30,7 +30,7 @@ type (
 
 // Initialize new docker client executor
 func NewDockerExecutor() (*DockerExecutor, error) {
-	cli, err := client.NewEnvClient()
+	cli, err := client.NewClientWithOpts()
 	if err != nil {
 		log.Error("can not initiate client for docker api. Error: ", err.Error())
 		return nil, err
@@ -139,7 +139,9 @@ func (docker *DockerExecutor) CreateImageMem(dockerFile, tags []string) error {
 	}
 	log.Debug("response from building image: ", resp)
 	termFd, isTerm := term.GetFdInfo(os.Stderr)
-	jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stderr, termFd, isTerm, nil)
+	if err1 := jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stderr, termFd, isTerm, nil); err1 != nil {
+		return err1
+	}
 
 	return nil
 }
@@ -166,7 +168,9 @@ func (docker *DockerExecutor) CreateImageDockerFile(dockerFilePath string, tags 
 	}
 	log.Debug("response from building image: ", resp)
 	termFd, isTerm := term.GetFdInfo(os.Stderr)
-	jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stderr, termFd, isTerm, nil)
+	if err1 := jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stderr, termFd, isTerm, nil); err1 != nil {
+		return err1
+	}
 	return nil
 }
 
