@@ -1,7 +1,10 @@
 package docker
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
+	"io/ioutil"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -10,7 +13,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/term"
 )
@@ -66,25 +68,71 @@ func (docker *DockerExecutor) CreateContainer() error {
 	}, &network.NetworkingConfig{}, "test_env_candidate_1")
 	if err != nil {
 		log.Error("can not create container with default configuration. Error: ", err.Error())
-		return err
+		return docker.removeContainer("test_env_candidate_1")
 	}
 	log.Debug("success create container. Output oprts: ", repsCreating)
 	return nil
 }
 
-func (docker *DockerExecutor) CreateImage(dockerFilePath, buildContextPath string, tags []string) error {
-	ctx := context.Background()
-	buildOptions := types.ImageBuildOptions{
-		Dockerfile: dockerFilePath,
-		Tags:       tags,
+func (docker *DockerExecutor) initiateTarFromFS(dockerFilePath string) (*bytes.Buffer, error) {
+	dockerFileReader, err := os.Open(dockerFilePath)
+	if err != nil {
+		log.Error("can not open docker file for reading that. " + err.Error())
+		return nil, err
+	}
+	readedDockerFile, err := ioutil.ReadAll(dockerFileReader)
+	if err != nil {
+		log.Error("can not read docker file. " + err.Error())
+		return nil, err
+	}
+	return docker.tarCreate(dockerFilePath, readedDockerFile)
+}
+
+func (docker *DockerExecutor) tarCreate(filePath string, data []byte) (*bytes.Buffer, error) {
+	buf := new(bytes.Buffer)
+	tw := tar.NewWriter(buf)
+	defer tw.Close()
+
+	tarHeader := &tar.Header{
+		Name: filePath,
+		Size: int64(len(data)),
+	}
+	if err := tw.WriteHeader(tarHeader); err != nil {
+		log.Error("can not write tar header. " + err.Error())
+		return nil, err
+	}
+	_, err := tw.Write(data)
+	if err != nil {
+		log.Error("can not writing dockerfile into tar archive. " + err.Error())
+		return nil, err
+	}
+	return buf, nil
+}
+
+func (docker *DockerExecutor) inituateTarFromStringArray(dockerFile []string) (*bytes.Buffer, error) {
+	result := ""
+	for _, v := range dockerFile {
+		result += v + "\n"
 	}
 
-	buildContext, errArchive := archive.TarWithOptions(buildContextPath, &archive.TarOptions{})
-	if errArchive != nil {
-		log.Error("can not archive buildContextPath. Error: ", errArchive.Error())
-		return errArchive
+	return docker.tarCreate("Dockerfile", []byte(result))
+}
+
+func (docker *DockerExecutor) CreateImageMem(dockerFile, tags []string) error {
+	ctx := context.Background()
+	resultBuffer, err := docker.inituateTarFromStringArray(dockerFile)
+	if err != nil {
+		log.Error("can not readed bytes from fs. " + err.Error())
+		return err
 	}
-	resp, err := docker.DockerClient.ImageBuild(ctx, buildContext, buildOptions)
+
+	dockerFileTar := bytes.NewReader(resultBuffer.Bytes())
+	buildOptions := types.ImageBuildOptions{
+		Context:    dockerFileTar,
+		Dockerfile: "Dockerfile",
+		Tags:       tags,
+	}
+	resp, err := docker.DockerClient.ImageBuild(ctx, dockerFileTar, buildOptions)
 	if err != nil {
 		log.Error("error while build image by dockerfile. Error: ", err.Error())
 		return err
@@ -92,5 +140,41 @@ func (docker *DockerExecutor) CreateImage(dockerFilePath, buildContextPath strin
 	log.Debug("response from building image: ", resp)
 	termFd, isTerm := term.GetFdInfo(os.Stderr)
 	jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stderr, termFd, isTerm, nil)
+
+	return nil
+}
+
+func (docker *DockerExecutor) CreateImageDockerFile(dockerFilePath string, tags []string) error {
+	ctx := context.Background()
+	resultBuffer, err := docker.initiateTarFromFS(dockerFilePath)
+	if err != nil {
+		log.Error("can not readed bytes from fs. " + err.Error())
+		return err
+	}
+
+	dockerFileTar := bytes.NewReader(resultBuffer.Bytes())
+
+	buildOptions := types.ImageBuildOptions{
+		Context:    dockerFileTar,
+		Dockerfile: dockerFilePath,
+		Tags:       tags,
+	}
+	resp, err := docker.DockerClient.ImageBuild(ctx, dockerFileTar, buildOptions)
+	if err != nil {
+		log.Error("error while build image by dockerfile. Error: ", err.Error())
+		return err
+	}
+	log.Debug("response from building image: ", resp)
+	termFd, isTerm := term.GetFdInfo(os.Stderr)
+	jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stderr, termFd, isTerm, nil)
+	return nil
+}
+
+func (docker *DockerExecutor) removeContainer(containerName string) error {
+	ctx := context.Background()
+	if err := docker.DockerClient.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{}); err != nil {
+		log.Error("can not remove container. " + err.Error())
+		return err
+	}
 	return nil
 }
