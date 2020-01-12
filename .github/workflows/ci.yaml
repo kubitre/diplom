@@ -1,5 +1,5 @@
 on: [push, pull_request]
-name: test and build
+name: CI_dev
 jobs:
   lint:
     runs-on: ubuntu-latest
