@@ -3,9 +3,15 @@ package docker
 import (
 	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/kubitre/diplom/models"
 	log "github.com/sirupsen/logrus"
@@ -23,6 +29,12 @@ type (
 		Status       chan bool // syncronization for executor
 		DockerClient *client.Client
 	}
+)
+
+const (
+	buildContextPath  = "dockerBuildContext"
+	buildContextTar   = buildContextPath + ".tar"
+	dockerFileMemName = "Dockerfile"
 )
 
 // Initialize new docker client executor
@@ -69,62 +81,327 @@ func (docker *DockerExecutor) CreateContainer(payload *models.ContainerCreatePay
 	return nil
 }
 
-func (docker *DockerExecutor) initiateTarFromFS(dockerFilePath string) (*bytes.Buffer, error) {
-	dockerFileReader, err := os.Open(dockerFilePath)
-	if err != nil {
-		log.Error("can not open docker file for reading that. " + err.Error())
-		return nil, err
-	}
-	readedDockerFile, err := ioutil.ReadAll(dockerFileReader)
-	if err != nil {
-		log.Error("can not read docker file. " + err.Error())
-		return nil, err
-	}
-	return docker.tarCreate(dockerFilePath, readedDockerFile)
-}
+// func (docker *DockerExecutor) initiateTarFromFS(dockerFilePath string) (*bytes.Buffer, error) {
+// 	dockerFileReader, err := os.Open(dockerFilePath)
+// 	if err != nil {
+// 		log.Error("can not open docker file for reading that. " + err.Error())
+// 		return nil, err
+// 	}
+// 	readedDockerFile, err := ioutil.ReadAll(dockerFileReader)
+// 	if err != nil {
+// 		log.Error("can not read docker file. " + err.Error())
+// 		return nil, err
+// 	}
+// 	return docker.tarCreate(dockerFilePath, readedDockerFile)
+// }
 
-func (docker *DockerExecutor) tarCreate(filePath string, data []byte) (*bytes.Buffer, error) {
-	buf := new(bytes.Buffer)
-	tw := tar.NewWriter(buf)
-	defer tw.Close()
+// func (docker *DockerExecutor) tarCreate(path string) (*bytes.Buffer, error) {
+// 	dir, err := os.Open(path)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	defer dir.Close()
 
-	tarHeader := &tar.Header{
-		Name: filePath,
-		Size: int64(len(data)),
-	}
-	if err := tw.WriteHeader(tarHeader); err != nil {
-		log.Error("can not write tar header. " + err.Error())
-		return nil, err
-	}
-	_, err := tw.Write(data)
-	if err != nil {
-		log.Error("can not writing dockerfile into tar archive. " + err.Error())
-		return nil, err
-	}
-	return buf, nil
-}
+// 	// get list of files
+// 	files, err := dir.Readdir(0)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-func (docker *DockerExecutor) inituateTarFromStringArray(dockerFile []string) (*bytes.Buffer, error) {
+// 	buf := new(bytes.Buffer)
+
+// 	tarfileWriter := tar.NewWriter(buf)
+// 	defer tarfileWriter.Close()
+// 	for _, fileInfo := range files {
+
+// 		if fileInfo.IsDir() {
+// 			continue
+// 		}
+
+// 		file, err := os.Open(dir.Name() + string(filepath.Separator) + fileInfo.Name())
+// 		if err != nil {
+
+// 		}
+// 		defer file.Close()
+
+// 		header := new(tar.Header)
+// 		header.Name = file.Name()
+// 		header.Size = fileInfo.Size()
+// 		header.Mode = int64(fileInfo.Mode())
+// 		header.ModTime = fileInfo.ModTime()
+
+// 		err = tarfileWriter.WriteHeader(header)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+
+// 		_, err = io.Copy(tarfileWriter, file)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 	}
+
+// 	return buf, nil
+// }
+
+func (docker *DockerExecutor) preparingBytesFromDockerfile(dockerFile []string) []byte {
 	result := ""
 	for _, v := range dockerFile {
 		result += v + "\n"
 	}
 
-	return docker.tarCreate("Dockerfile", []byte(result))
+	return []byte(result)
 }
 
-func (docker *DockerExecutor) CreateImageMem(dockerFile, tags []string) error {
+func (docker *DockerExecutor) getPathNeededToCopyInContext(dockerFile []string, neededPath *map[string]string) []string {
+	result := make([]string, 0)
+	for _, value := range dockerFile {
+		if strings.Contains(value, "COPY") {
+			tokens := strings.Split(value, " ")
+			lastPart, err := docker.getFinalNamePath(tokens[1])
+			if err != nil {
+				log.Error("can not copy value. ", err)
+			}
+			result = append(result, "COPY "+buildContextPath+"/"+lastPart+" "+tokens[2])
+			(*neededPath)[tokens[1]] = tokens[2]
+
+		} else {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func (docker *DockerExecutor) getFinalNamePath(path string) (string, error) {
+	fileParts := strings.Split(path, "/")
+	if len(fileParts) == 0 {
+		return "", errors.New("can not get last part of file")
+	}
+	return fileParts[len(fileParts)-1], nil
+}
+
+func (docker *DockerExecutor) PrepareDockerEnv(neededPath map[string]string, dockerFile []string) error {
+	fromDockerfile := neededPath
+	dockerFile = docker.getPathNeededToCopyInContext(dockerFile, &fromDockerfile)
+	log.Info("result dockerfile: ", dockerFile)
+
+	dockerF2, err := docker.preparingContext(fromDockerfile, dockerFile, false)
+	if err != nil {
+		log.Error("can not preparing context from neededpath: ", err)
+	}
+
+	if err := docker.writeDockerfile(buildContextPath+"/"+dockerFileMemName, docker.preparingBytesFromDockerfile(dockerF2)); err != nil {
+		log.Error("can not write dockerfile in buildcontext path. ", err)
+		return err
+	}
+	return nil
+}
+
+func (docker *DockerExecutor) preparingContext(neededPath map[string]string, dockerFile []string, fromDockerfile bool) ([]string, error) {
+	dockerf := dockerFile
+	for key, val := range neededPath {
+		lastPart, err := docker.getFinalNamePath(key)
+		if err != nil {
+			log.Error("can not copy value. ", err)
+		}
+		if err := docker.copyDir(key, buildContextPath+"/"+lastPart); err != nil {
+			return nil, err
+		}
+		if fromDockerfile {
+			dockerf = append(dockerf, "COPY "+buildContextPath+"/"+lastPart+" "+val)
+		}
+	}
+	return dockerf, nil
+}
+
+func (docker *DockerExecutor) writeDockerfile(filePath string, data []byte) error {
+	file, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return ioutil.WriteFile(filePath, data, 0777)
+}
+
+func (docker *DockerExecutor) copyDir(src string, dst string) (err error) {
+	src = filepath.Clean(src)
+	dst = filepath.Clean(dst)
+
+	si, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if !si.IsDir() {
+		return fmt.Errorf("source is not a directory")
+	}
+
+	_, err = os.Stat(dst)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	// // no worning
+	// if err == nil {
+	// 	return fmt.Errorf("destination already exists. ", err)
+	// }
+
+	err = os.MkdirAll(dst, si.Mode())
+	if err != nil {
+		return
+	}
+
+	entries, err := ioutil.ReadDir(src)
+	if err != nil {
+		return
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			err = docker.copyDir(srcPath, dstPath)
+			if err != nil {
+				return
+			}
+		} else {
+			// Skip symlinks.
+			if entry.Mode()&os.ModeSymlink != 0 {
+				continue
+			}
+
+			err = docker.copyFile(srcPath, dstPath)
+			if err != nil {
+				return
+			}
+		}
+	}
+
+	return
+}
+
+func (docker *DockerExecutor) copyFile(src, dst string) (err error) {
+	in, err := os.Open(src)
+	if err != nil {
+		return
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return
+	}
+	defer func() {
+		if e := out.Close(); e != nil {
+			err = e
+		}
+	}()
+
+	_, err = io.Copy(out, in)
+	if err != nil {
+		return
+	}
+
+	err = out.Sync()
+	if err != nil {
+		return
+	}
+
+	si, err := os.Stat(src)
+	if err != nil {
+		return
+	}
+	err = os.Chmod(dst, si.Mode())
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func (docker *DockerExecutor) tar(src string) (*bytes.Buffer, error) {
+	buff, err := docker.compressDir(buildContextPath)
+	if err != nil {
+		return nil, err
+	}
+	// fileToWrite, err := os.OpenFile("./compress.tar.gzip", os.O_CREATE|os.O_RDWR, os.FileMode(600))
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// if _, err := io.Copy(fileToWrite, buff); err != nil {
+	// 	panic(err)
+	// }
+
+	return buff, nil
+}
+
+func (docker *DockerExecutor) compressDir(path string) (*bytes.Buffer, error) {
+	buf := new(bytes.Buffer)
+	zr := gzip.NewWriter(buf)
+	tw := tar.NewWriter(zr)
+
+	// walk through every file in the folder
+	filepath.Walk(path, func(file string, fi os.FileInfo, err error) error {
+		// generate tar header
+		header, err := tar.FileInfoHeader(fi, file)
+		log.Info("walking: ", header)
+		if err != nil {
+			return err
+		}
+
+		// must provide real name
+		// (see https://golang.org/src/archive/tar/common.go?#L626)
+		header.Name = filepath.ToSlash(file)
+
+		// write header
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		// if not a dir, write file content
+		if !fi.IsDir() {
+			data, err := os.Open(file)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(tw, data); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	// produce tar
+	if err := tw.Close(); err != nil {
+		return nil, err
+	}
+	// produce gzip
+	if err := zr.Close(); err != nil {
+		return nil, err
+	}
+	//
+	log.Info("buffer: ", buf)
+	return buf, nil
+}
+
+func (docker *DockerExecutor) CreateImageMem(dockerFile, tags []string, neededPath map[string]string) error {
 	ctx := context.Background()
-	resultBuffer, err := docker.inituateTarFromStringArray(dockerFile)
+	err := docker.PrepareDockerEnv(neededPath, dockerFile)
 	if err != nil {
 		log.Error("can not readed bytes from fs. " + err.Error())
 		return err
 	}
 
+	resultBuffer, errCreate := docker.tar(buildContextPath)
+	if errCreate != nil {
+		log.Error("can not create tar for build context. ", errCreate)
+		return err
+	}
+
+	log.Info("buffer: ", resultBuffer)
+
 	dockerFileTar := bytes.NewReader(resultBuffer.Bytes())
 	buildOptions := types.ImageBuildOptions{
 		Context:    dockerFileTar,
-		Dockerfile: "Dockerfile",
+		Dockerfile: buildContextPath + "/" + dockerFileMemName,
 		Tags:       tags,
 	}
 	resp, err := docker.DockerClient.ImageBuild(ctx, dockerFileTar, buildOptions)
@@ -137,37 +414,38 @@ func (docker *DockerExecutor) CreateImageMem(dockerFile, tags []string) error {
 	if err1 := jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stderr, termFd, isTerm, nil); err1 != nil {
 		return err1
 	}
+	os.RemoveAll(buildContextPath)
 
 	return nil
 }
 
-func (docker *DockerExecutor) CreateImageDockerFile(dockerFilePath string, tags []string) error {
-	ctx := context.Background()
-	resultBuffer, err := docker.initiateTarFromFS(dockerFilePath)
-	if err != nil {
-		log.Error("can not readed bytes from fs. " + err.Error())
-		return err
-	}
+// func (docker *DockerExecutor) CreateImageDockerFile(dockerFilePath string, tags []string) error {
+// 	ctx := context.Background()
+// 	resultBuffer, err := docker.initiateTarFromFS(dockerFilePath)
+// 	if err != nil {
+// 		log.Error("can not readed bytes from fs. " + err.Error())
+// 		return err
+// 	}
 
-	dockerFileTar := bytes.NewReader(resultBuffer.Bytes())
+// 	dockerFileTar := bytes.NewReader(resultBuffer.Bytes())
 
-	buildOptions := types.ImageBuildOptions{
-		Context:    dockerFileTar,
-		Dockerfile: dockerFilePath,
-		Tags:       tags,
-	}
-	resp, err := docker.DockerClient.ImageBuild(ctx, dockerFileTar, buildOptions)
-	if err != nil {
-		log.Error("error while build image by dockerfile. Error: ", err.Error())
-		return err
-	}
-	log.Debug("response from building image: ", resp)
-	termFd, isTerm := term.GetFdInfo(os.Stderr)
-	if err1 := jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stderr, termFd, isTerm, nil); err1 != nil {
-		return err1
-	}
-	return nil
-}
+// 	buildOptions := types.ImageBuildOptions{
+// 		Context:    dockerFileTar,
+// 		Dockerfile: dockerFilePath,
+// 		Tags:       tags,
+// 	}
+// 	resp, err := docker.DockerClient.ImageBuild(ctx, dockerFileTar, buildOptions)
+// 	if err != nil {
+// 		log.Error("error while build image by dockerfile. Error: ", err.Error())
+// 		return err
+// 	}
+// 	log.Debug("response from building image: ", resp)
+// 	termFd, isTerm := term.GetFdInfo(os.Stderr)
+// 	if err1 := jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stderr, termFd, isTerm, nil); err1 != nil {
+// 		return err1
+// 	}
+// 	return nil
+// }
 
 func (docker *DockerExecutor) removeContainer(containerName string) error {
 	ctx := context.Background()
