@@ -139,8 +139,7 @@ func Test_CreatePipelineWithConfig(t *testing.T) {
 				Image: []string{
 					"FROM ubuntu:18.04 as runnerContext",
 					`RUN echo "test" > test.txt`,
-					"COPY /home/kubitre/my_scripts test",
-					"RUN ls -la test",
+					"RUN cat test.txt",
 				},
 			},
 		},

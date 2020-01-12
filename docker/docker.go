@@ -33,7 +33,6 @@ type (
 
 const (
 	buildContextPath  = "dockerBuildContext"
-	buildContextTar   = buildContextPath + ".tar"
 	dockerFileMemName = "Dockerfile"
 )
 
@@ -197,6 +196,10 @@ func (docker *DockerExecutor) PrepareDockerEnv(neededPath map[string]string, doc
 	return nil
 }
 
+func (docker *DockerExecutor) preparingEntrypointScript(script []byte) ([]string, error) {
+	return []string{}, nil
+}
+
 func (docker *DockerExecutor) preparingContext(neededPath map[string]string, dockerFile []string, fromDockerfile bool) ([]string, error) {
 	dockerf := dockerFile
 	for key, val := range neededPath {
@@ -340,7 +343,7 @@ func (docker *DockerExecutor) compressDir(path string) (*bytes.Buffer, error) {
 	tw := tar.NewWriter(zr)
 
 	// walk through every file in the folder
-	filepath.Walk(path, func(file string, fi os.FileInfo, err error) error {
+	if err := filepath.Walk(path, func(file string, fi os.FileInfo, err error) error {
 		// generate tar header
 		header, err := tar.FileInfoHeader(fi, file)
 		log.Info("walking: ", header)
@@ -367,7 +370,9 @@ func (docker *DockerExecutor) compressDir(path string) (*bytes.Buffer, error) {
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	// produce tar
 	if err := tw.Close(); err != nil {
