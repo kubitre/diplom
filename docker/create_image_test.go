@@ -3,12 +3,11 @@ package docker
 import (
 	"testing"
 
-	"github.com/kubitre/diplom/docker"
 	log "github.com/sirupsen/logrus"
 )
 
 func Test_CreateImageDockerByDockerfile(t *testing.T) {
-	dockerExecutor, errCreateExecutor := docker.NewDockerExecutor()
+	dockerExecutor, errCreateExecutor := NewDockerExecutor()
 	if errCreateExecutor != nil {
 		t.Error("can not create client for docker manipulation. Error: ", errCreateExecutor.Error())
 	}
@@ -19,7 +18,7 @@ func Test_CreateImageDockerByDockerfile(t *testing.T) {
 }
 
 func Test_CreateImageDockerByMemfile(t *testing.T) {
-	dockerExecutor, errCreateExecutor := docker.NewDockerExecutor()
+	dockerExecutor, errCreateExecutor := NewDockerExecutor()
 	if errCreateExecutor != nil {
 		t.Error("can not create client for docker manipulation. Error: ", errCreateExecutor.Error())
 	}

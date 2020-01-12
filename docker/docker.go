@@ -22,10 +22,6 @@ type (
 		Status       chan bool // syncronization for executor
 		DockerClient *client.Client
 	}
-	EnvImage struct {
-		Type  string `json:"type"`
-		Image string `json:"payload"`
-	}
 )
 
 // Initialize new docker client executor
@@ -42,9 +38,9 @@ func NewDockerExecutor() (*DockerExecutor, error) {
 }
 
 // pulling image from hub.docker.com
-func (docker *DockerExecutor) PullImage(image *EnvImage) error {
+func (docker *DockerExecutor) PullImage(image string) error {
 	ctx := context.Background()
-	respPulling, errPulling := docker.DockerClient.ImagePull(ctx, image.Image, types.ImagePullOptions{})
+	respPulling, errPulling := docker.DockerClient.ImagePull(ctx, image, types.ImagePullOptions{})
 	if errPulling != nil {
 		log.Error("Can npt pulling image. Error: ", errPulling.Error())
 		return errPulling

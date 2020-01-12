@@ -2,12 +2,10 @@ package docker
 
 import (
 	"testing"
-
-	"github.com/kubitre/diplom/docker"
 )
 
 func Test_createDefaultContainer(t *testing.T) {
-	dockerExecutor, errCreateExecutor := docker.NewDockerExecutor()
+	dockerExecutor, errCreateExecutor := NewDockerExecutor()
 	if errCreateExecutor != nil {
 		t.Error("can not create client for docker manipulation. Error: ", errCreateExecutor.Error())
 	}
