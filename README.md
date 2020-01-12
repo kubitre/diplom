@@ -1,3 +1,4 @@
+![](https://github.com/kubitre/diplom/workflows/ci.yaml/badge.svg)
 [![codecov](https://codecov.io/gh/kubitre/diplom/branch/master/graph/badge.svg?token=EGI57ppVgU)](https://codecov.io/gh/kubitre/diplom) 
 
 # ExecutorTasksCandidateCodes
