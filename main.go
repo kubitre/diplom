@@ -19,7 +19,7 @@ func main() {
 	log.Println("Tasks: ", runn.Tasks)
 
 	gt := gitmod.Git{}
-	if err = gt.CloneRepo("https://github.com/kubitre/for_diplom.git"); err != nil {
+	if _, err = gt.CloneRepo("https://github.com/kubitre/for_diplom.git"); err != nil {
 		log.Panic(err)
 	}
 
