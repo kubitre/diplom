@@ -1,4 +1,4 @@
-![](https://github.com/kubitre/diplom/workflows/ci.yaml/badge.svg)
+[![Actions Status](https://github.com/kubitre/diplom/workflows/CI_dev/badge.svg)](https://github.com/kubitre/diplom/actions?query=workflow%3ACI_dev)
 [![codecov](https://codecov.io/gh/kubitre/diplom/branch/master/graph/badge.svg?token=EGI57ppVgU)](https://codecov.io/gh/kubitre/diplom) 
 
 # ExecutorTasksCandidateCodes
