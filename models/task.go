@@ -1,4 +1,4 @@
-package tasks
+package models
 
 /*Task - primitive which parsed from entered yaml from portal*/
 type Task struct {

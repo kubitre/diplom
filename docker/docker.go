@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/kubitre/diplom/models"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/docker/docker/api/types"
@@ -51,17 +52,15 @@ func (docker *DockerExecutor) PullImage(image string) error {
 }
 
 // CreateContainer - function for creating new container with docker file such as json
-func (docker *DockerExecutor) CreateContainer() error {
+func (docker *DockerExecutor) CreateContainer(payload *models.ContainerCreatePayload) error {
 	ctx := context.Background()
 	repsCreating, err := docker.DockerClient.ContainerCreate(ctx, &container.Config{
-		Image:      "ubuntu",
-		WorkingDir: "/test",
-		Shell: []string{
-			"RUN ls -la",
-		},
+		Image:      payload.BaseImageName,
+		WorkingDir: payload.WorkDir,
+		Shell:      payload.ShellCommands,
 	}, &container.HostConfig{
 		AutoRemove: true,
-	}, &network.NetworkingConfig{}, "hello-world")
+	}, &network.NetworkingConfig{}, payload.ContainerName)
 	if err != nil {
 		log.Error("can not create container with default configuration. Error: ", err.Error())
 		return docker.removeContainer("test_env_candidate_1")

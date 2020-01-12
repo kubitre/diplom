@@ -11,7 +11,7 @@ type Git struct {
 }
 
 func (gt *Git) CloneRepo(url string) error {
-	res, err := git.PlainClone("./temp/repo", false, &git.CloneOptions{
+	res, err := git.PlainClone("../temp", false, &git.CloneOptions{
 		URL:      url,
 		Progress: os.Stdout,
 	})

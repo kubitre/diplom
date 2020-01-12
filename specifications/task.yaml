@@ -1,8 +1,10 @@
+checkId: 123
+
 stages:
   - lint
   - build
   - test
-
+  
 tasks:
   BuildProject:
     stage: build
