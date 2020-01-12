@@ -134,6 +134,13 @@ func Test_CreatePipelineWithConfig(t *testing.T) {
 				RepositoryCandidate: "https://github.com/kubitre/for_diplom",
 				ShellCommands: []string{
 					"ls -la",
+					"cat test.txt",
+				},
+				Image: []string{
+					"FROM ubuntu:18.04 as runnerContext",
+					`RUN echo "test" > test.txt`,
+					"COPY /home/kubitre/my_scripts test",
+					"RUN ls -la test",
 				},
 			},
 		},

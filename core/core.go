@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"os"
 
 	"github.com/kubitre/diplom/docker"
 	"github.com/kubitre/diplom/gitmod"
@@ -79,21 +80,43 @@ func (core *CoreRunner) executingTaskInStage(stage string) error {
 	return nil
 }
 
-func (core *CoreRunner) getRepoCandidate(taskName string) error {
-	if err := core.Git.CloneRepo(core.WorkConfig.Tasks[taskName].RepositoryCandidate); err != nil {
+/*execute any commands need in task*/
+func (core *CoreRunner) executingShell(task *models.Task) error {
+	return nil
+}
+
+func (core *CoreRunner) getRepoCandidate(taskName string) (string, error) {
+	path, err := core.Git.CloneRepo(core.WorkConfig.Tasks[taskName].RepositoryCandidate)
+	if err != nil {
+		switch core.Git.GetTypeError(err) {
+		case gitmod.ErrorAuthenticate:
+			return "", err
+		case gitmod.ErrorExistingRepository:
+			return path, core.Git.RemoveRepo(path)
+		case gitmod.ErrorUnrecognized:
+			return "", err
+		}
+	}
+	return path, nil
+}
+
+func (core *CoreRunner) prepareTask(taskName string, task *models.Task) error {
+	pathRepo, err := core.getRepoCandidate(taskName)
+	if err != nil {
 		return err
+	}
+
+	if err := core.Docker.CreateImageMem(core.appendRepoIntoDocker(pathRepo, task), []string{core.WorkConfig.RunID + taskName}, map[string]string{}); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(pathRepo); err != nil {
+		log.Warn("can not remove repo candidate. ", err)
 	}
 	return nil
 }
 
-func (core *CoreRunner) prepareTask(taskName string, task *models.Task) error {
-	if err := core.getRepoCandidate(taskName); err != nil {
-		return err
-	}
-	if err := core.Docker.CreateImageMem(task.Image, []string{core.WorkConfig.RunID + taskName}); err != nil {
-		return err
-	}
-	return nil
+func (core *CoreRunner) appendRepoIntoDocker(path string, task *models.Task) []string {
+	return append(task.Image, `COPY `+path+` /repoCandidate`)
 }
 
 func (core *CoreRunner) getTasksByStage(stage string) map[string]models.Task {
