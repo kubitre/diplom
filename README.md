@@ -1,5 +1,7 @@
 [![Actions Status](https://github.com/kubitre/diplom/workflows/CI_dev/badge.svg)](https://github.com/kubitre/diplom/actions?query=workflow%3ACI_dev)
 [![codecov](https://codecov.io/gh/kubitre/diplom/branch/master/graph/badge.svg?token=EGI57ppVgU)](https://codecov.io/gh/kubitre/diplom) 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/ec88d97d61344cea92d7f299d078c9c3)](https://www.codacy.com?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=kubitre/diplom&amp;utm_campaign=Badge_Grade)
+
 
 # ExecutorTasksCandidateCodes
 Diploma Project. This project executing tasks stages for manipulate candidates code
