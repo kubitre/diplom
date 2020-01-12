@@ -1,3 +1,5 @@
+[![codecov](https://codecov.io/gh/kubitre/diplom/branch/master/graph/badge.svg?token=EGI57ppVgU)](https://codecov.io/gh/kubitre/diplom) 
+
 # ExecutorTasksCandidateCodes
 Diploma Project. This project executing tasks stages for manipulate candidates code
 
