@@ -16,12 +16,12 @@ func Test_createDefaultContainer(t *testing.T) {
 	}
 
 	if err := dockerExecutor.CreateContainer(&models.ContainerCreatePayload{
-		BaseImageName: "ubuntu",
+		BaseImageName: "ubuntu:18.04",
 		WorkDir:       "/test",
 		ShellCommands: []string{
 			"RUN ls -la",
 		},
-		ContainerName: "container_test_test4",
+		ContainerName: "container_test_test1",
 	}); err != nil {
 		t.Error("can not create container. Error: ", err.Error())
 	}

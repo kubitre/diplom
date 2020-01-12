@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/kubitre/diplom/models"
+	"github.com/kubitre/diplom/utils"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/docker/docker/api/types"
@@ -34,6 +35,7 @@ type (
 const (
 	buildContextPath  = "dockerBuildContext"
 	dockerFileMemName = "Dockerfile"
+	entryScript       = "/entry.bash"
 )
 
 // Initialize new docker client executor
@@ -179,25 +181,29 @@ func (docker *DockerExecutor) getFinalNamePath(path string) (string, error) {
 	return fileParts[len(fileParts)-1], nil
 }
 
-func (docker *DockerExecutor) PrepareDockerEnv(neededPath map[string]string, dockerFile []string) error {
+func (docker *DockerExecutor) PrepareDockerEnv(neededPath map[string]string, dockerFile, shell []string) error {
 	fromDockerfile := neededPath
 	dockerFile = docker.getPathNeededToCopyInContext(dockerFile, &fromDockerfile)
-	log.Info("result dockerfile: ", dockerFile)
 
 	dockerF2, err := docker.preparingContext(fromDockerfile, dockerFile, false)
 	if err != nil {
 		log.Error("can not preparing context from neededpath: ", err)
+		return err
 	}
+	if err := docker.prepareExecutingScript(shell); err != nil {
+		log.Error("can not create executing script. ", err)
+		return err
+	}
+
+	dockerF2 = append(dockerF2, "COPY "+buildContextPath+entryScript+" .")
+	dockerF2 = append(dockerF2, "ENTRYPOINT [ \"bash\", \""+entryScript+"\" ]")
+	log.Info("result dockerfile: ", dockerF2)
 
 	if err := docker.writeDockerfile(buildContextPath+"/"+dockerFileMemName, docker.preparingBytesFromDockerfile(dockerF2)); err != nil {
 		log.Error("can not write dockerfile in buildcontext path. ", err)
 		return err
 	}
 	return nil
-}
-
-func (docker *DockerExecutor) preparingEntrypointScript(script []byte) ([]string, error) {
-	return []string{}, nil
 }
 
 func (docker *DockerExecutor) preparingContext(neededPath map[string]string, dockerFile []string, fromDockerfile bool) ([]string, error) {
@@ -282,6 +288,20 @@ func (docker *DockerExecutor) copyDir(src string, dst string) (err error) {
 	return
 }
 
+func (docker *DockerExecutor) prepareExecutingScript(shell []string) error {
+	result, err := utils.CreateExecutingScript(shell)
+	if err != nil {
+		return err
+	}
+	// if _, err := os.Create(buildContextPath + entryScript); err != nil {
+	// 	return err
+	// }
+	if err := ioutil.WriteFile("./"+buildContextPath+entryScript, result, 0777); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (docker *DockerExecutor) copyFile(src, dst string) (err error) {
 	in, err := os.Open(src)
 	if err != nil {
@@ -343,12 +363,12 @@ func (docker *DockerExecutor) compressDir(path string) (*bytes.Buffer, error) {
 	tw := tar.NewWriter(zr)
 
 	// walk through every file in the folder
-	if err := filepath.Walk(path, func(file string, fi os.FileInfo, err error) error {
+	if err1 := filepath.Walk(path, func(file string, fi os.FileInfo, err error) error {
 		// generate tar header
-		header, err := tar.FileInfoHeader(fi, file)
+		header, err2 := tar.FileInfoHeader(fi, file)
 		log.Info("walking: ", header)
-		if err != nil {
-			return err
+		if err2 != nil {
+			return err2
 		}
 
 		// must provide real name
@@ -356,22 +376,22 @@ func (docker *DockerExecutor) compressDir(path string) (*bytes.Buffer, error) {
 		header.Name = filepath.ToSlash(file)
 
 		// write header
-		if err := tw.WriteHeader(header); err != nil {
-			return err
+		if err2 := tw.WriteHeader(header); err2 != nil {
+			return err2
 		}
 		// if not a dir, write file content
 		if !fi.IsDir() {
-			data, err := os.Open(file)
-			if err != nil {
-				return err
+			data, err2 := os.Open(file)
+			if err2 != nil {
+				return err2
 			}
-			if _, err := io.Copy(tw, data); err != nil {
-				return err
+			if _, err2 := io.Copy(tw, data); err2 != nil {
+				return err2
 			}
 		}
 		return nil
-	}); err != nil {
-		return nil, err
+	}); err1 != nil {
+		return nil, err1
 	}
 
 	// produce tar
@@ -387,9 +407,9 @@ func (docker *DockerExecutor) compressDir(path string) (*bytes.Buffer, error) {
 	return buf, nil
 }
 
-func (docker *DockerExecutor) CreateImageMem(dockerFile, tags []string, neededPath map[string]string) error {
+func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, neededPath map[string]string) error {
 	ctx := context.Background()
-	err := docker.PrepareDockerEnv(neededPath, dockerFile)
+	err := docker.PrepareDockerEnv(neededPath, dockerFile, shell)
 	if err != nil {
 		log.Error("can not readed bytes from fs. " + err.Error())
 		return err

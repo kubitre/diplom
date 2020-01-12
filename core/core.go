@@ -80,11 +80,6 @@ func (core *CoreRunner) executingTaskInStage(stage string) error {
 	return nil
 }
 
-/*execute any commands need in task*/
-func (core *CoreRunner) executingShell(task *models.Task) error {
-	return nil
-}
-
 func (core *CoreRunner) getRepoCandidate(taskName string) (string, error) {
 	path, err := core.Git.CloneRepo(core.WorkConfig.Tasks[taskName].RepositoryCandidate)
 	if err != nil {
@@ -106,7 +101,10 @@ func (core *CoreRunner) prepareTask(taskName string, task *models.Task) error {
 		return err
 	}
 
-	if err := core.Docker.CreateImageMem(core.appendRepoIntoDocker(pathRepo, task), []string{core.WorkConfig.RunID + taskName}, map[string]string{}); err != nil {
+	if err := core.Docker.CreateImageMem(core.appendRepoIntoDocker(pathRepo, task),
+		task.ShellCommands,
+		[]string{core.WorkConfig.RunID + taskName},
+		map[string]string{}); err != nil {
 		return err
 	}
 	if err := os.RemoveAll(pathRepo); err != nil {
