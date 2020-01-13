@@ -2,6 +2,7 @@ package docker
 
 import (
 	"testing"
+	"time"
 
 	"github.com/kubitre/diplom/models"
 )
@@ -14,16 +15,16 @@ func Test_createDefaultContainer(t *testing.T) {
 	if err := dockerExecutor.removeContainer("container_test_test2"); err != nil {
 		t.Log("can not remove container. ", err.Error())
 	}
-	if err := dockerExecutor.PullImage("ubuntu:18.04"); err != nil {
-		t.Error("can not pull ubuntu")
+	if err := dockerExecutor.PullImage("alpine"); err != nil {
+		t.Error("can not pull alpine")
 	}
 
+	time.Sleep(time.Second * 5)
+
 	if err := dockerExecutor.CreateContainer(&models.ContainerCreatePayload{
-		BaseImageName: "ubuntu:18.04",
+		BaseImageName: "alpine",
 		WorkDir:       "/test",
-		ShellCommands: []string{
-			"RUN ls -la",
-		},
+		ShellCommands: []string{},
 		ContainerName: "container_test_test2",
 	}); err != nil {
 		t.Error("can not create container. Error: ", err.Error())
