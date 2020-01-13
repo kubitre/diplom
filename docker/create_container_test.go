@@ -14,6 +14,9 @@ func Test_createDefaultContainer(t *testing.T) {
 	if err := dockerExecutor.removeContainer("container_test_test2"); err != nil {
 		t.Log("can not remove container. ", err.Error())
 	}
+	if err := dockerExecutor.PullImage("ubuntu:18.04"); err != nil {
+		t.Error("can not pull ubuntu")
+	}
 
 	if err := dockerExecutor.CreateContainer(&models.ContainerCreatePayload{
 		BaseImageName: "ubuntu:18.04",
