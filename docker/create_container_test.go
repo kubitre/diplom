@@ -11,7 +11,7 @@ func Test_createDefaultContainer(t *testing.T) {
 	if errCreateExecutor != nil {
 		t.Error("can not create client for docker manipulation. Error: ", errCreateExecutor.Error())
 	}
-	if err := dockerExecutor.removeContainer("container_test_test4"); err != nil {
+	if err := dockerExecutor.removeContainer("container_test_test2"); err != nil {
 		t.Log("can not remove container. ", err.Error())
 	}
 
@@ -21,7 +21,7 @@ func Test_createDefaultContainer(t *testing.T) {
 		ShellCommands: []string{
 			"RUN ls -la",
 		},
-		ContainerName: "container_test_test1",
+		ContainerName: "container_test_test2",
 	}); err != nil {
 		t.Error("can not create container. Error: ", err.Error())
 	}

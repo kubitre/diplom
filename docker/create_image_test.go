@@ -32,7 +32,6 @@ func Test_CreateImageDockerByMemfile(t *testing.T) {
 	if err := dockerExecutor.CreateImageMem([]string{
 		"FROM ubuntu:18.04",
 		"RUN apt update",
-		"COPY /home/kubitre/my_scripts /testMeedDependencies",
 	}, []string{
 		`echo "hello world"`,
 	}, []string{"test_candidate_2"}, map[string]string{

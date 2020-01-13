@@ -366,7 +366,6 @@ func (docker *DockerExecutor) compressDir(path string) (*bytes.Buffer, error) {
 	if err1 := filepath.Walk(path, func(file string, fi os.FileInfo, err error) error {
 		// generate tar header
 		header, err2 := tar.FileInfoHeader(fi, file)
-		log.Info("walking: ", header)
 		if err2 != nil {
 			return err2
 		}
@@ -420,8 +419,6 @@ func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, n
 		log.Error("can not create tar for build context. ", errCreate)
 		return err
 	}
-
-	log.Info("buffer: ", resultBuffer)
 
 	dockerFileTar := bytes.NewReader(resultBuffer.Bytes())
 	buildOptions := types.ImageBuildOptions{
