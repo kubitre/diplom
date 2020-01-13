@@ -82,69 +82,6 @@ func (docker *DockerExecutor) CreateContainer(payload *models.ContainerCreatePay
 	return nil
 }
 
-// func (docker *DockerExecutor) initiateTarFromFS(dockerFilePath string) (*bytes.Buffer, error) {
-// 	dockerFileReader, err := os.Open(dockerFilePath)
-// 	if err != nil {
-// 		log.Error("can not open docker file for reading that. " + err.Error())
-// 		return nil, err
-// 	}
-// 	readedDockerFile, err := ioutil.ReadAll(dockerFileReader)
-// 	if err != nil {
-// 		log.Error("can not read docker file. " + err.Error())
-// 		return nil, err
-// 	}
-// 	return docker.tarCreate(dockerFilePath, readedDockerFile)
-// }
-
-// func (docker *DockerExecutor) tarCreate(path string) (*bytes.Buffer, error) {
-// 	dir, err := os.Open(path)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer dir.Close()
-
-// 	// get list of files
-// 	files, err := dir.Readdir(0)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	buf := new(bytes.Buffer)
-
-// 	tarfileWriter := tar.NewWriter(buf)
-// 	defer tarfileWriter.Close()
-// 	for _, fileInfo := range files {
-
-// 		if fileInfo.IsDir() {
-// 			continue
-// 		}
-
-// 		file, err := os.Open(dir.Name() + string(filepath.Separator) + fileInfo.Name())
-// 		if err != nil {
-
-// 		}
-// 		defer file.Close()
-
-// 		header := new(tar.Header)
-// 		header.Name = file.Name()
-// 		header.Size = fileInfo.Size()
-// 		header.Mode = int64(fileInfo.Mode())
-// 		header.ModTime = fileInfo.ModTime()
-
-// 		err = tarfileWriter.WriteHeader(header)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-
-// 		_, err = io.Copy(tarfileWriter, file)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 	}
-
-// 	return buf, nil
-// }
-
 func (docker *DockerExecutor) preparingBytesFromDockerfile(dockerFile []string) []byte {
 	result := ""
 	for _, v := range dockerFile {
@@ -248,10 +185,6 @@ func (docker *DockerExecutor) copyDir(src string, dst string) (err error) {
 	if err != nil && !os.IsNotExist(err) {
 		return
 	}
-	// // no worning
-	// if err == nil {
-	// 	return fmt.Errorf("destination already exists. ", err)
-	// }
 
 	err = os.MkdirAll(dst, si.Mode())
 	if err != nil {
@@ -293,9 +226,7 @@ func (docker *DockerExecutor) prepareExecutingScript(shell []string) error {
 	if err != nil {
 		return err
 	}
-	// if _, err := os.Create(buildContextPath + entryScript); err != nil {
-	// 	return err
-	// }
+
 	if err := ioutil.WriteFile("./"+buildContextPath+entryScript, result, 0777); err != nil {
 		return err
 	}
@@ -346,13 +277,6 @@ func (docker *DockerExecutor) tar(src string) (*bytes.Buffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	// fileToWrite, err := os.OpenFile("./compress.tar.gzip", os.O_CREATE|os.O_RDWR, os.FileMode(600))
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if _, err := io.Copy(fileToWrite, buff); err != nil {
-	// 	panic(err)
-	// }
 
 	return buff, nil
 }
@@ -362,23 +286,17 @@ func (docker *DockerExecutor) compressDir(path string) (*bytes.Buffer, error) {
 	zr := gzip.NewWriter(buf)
 	tw := tar.NewWriter(zr)
 
-	// walk through every file in the folder
 	if err1 := filepath.Walk(path, func(file string, fi os.FileInfo, err error) error {
-		// generate tar header
 		header, err2 := tar.FileInfoHeader(fi, file)
 		if err2 != nil {
 			return err2
 		}
 
-		// must provide real name
-		// (see https://golang.org/src/archive/tar/common.go?#L626)
 		header.Name = filepath.ToSlash(file)
 
-		// write header
 		if err2 := tw.WriteHeader(header); err2 != nil {
 			return err2
 		}
-		// if not a dir, write file content
 		if !fi.IsDir() {
 			data, err2 := os.Open(file)
 			if err2 != nil {
@@ -393,11 +311,9 @@ func (docker *DockerExecutor) compressDir(path string) (*bytes.Buffer, error) {
 		return nil, err1
 	}
 
-	// produce tar
 	if err := tw.Close(); err != nil {
 		return nil, err
 	}
-	// produce gzip
 	if err := zr.Close(); err != nil {
 		return nil, err
 	}
