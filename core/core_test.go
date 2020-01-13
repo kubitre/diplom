@@ -148,3 +148,22 @@ func Test_CreatePipelineWithConfig(t *testing.T) {
 	}
 	t.Log("completed test.")
 }
+
+func Test_GetTypeError(t *testing.T) {
+	git := gitmod.Git{}
+	path, err := git.CloneRepo("http://github.com/kubitre/")
+	switch git.GetTypeError(err) {
+	case gitmod.ErrorAuthenticate:
+		t.Log("test")
+		t.Error()
+		return
+	case gitmod.ErrorExistingRepository:
+		t.Log("test")
+		t.Error()
+		return
+	case gitmod.ErrorUnrecognized:
+		t.Log("test")
+		return
+	}
+	t.Error("Path: ", path)
+}
