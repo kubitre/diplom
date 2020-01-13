@@ -36,6 +36,7 @@ func (gt *Git) CloneRepo(url string) (string, error) {
 	return "repo_" + id.String(), nil
 }
 
+//nolint:unused
 func (gt *Git) getTypeErrorCode(nameError string) ErrorType {
 	switch nameError {
 	case stringErrorExistingRepo:

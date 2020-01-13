@@ -16,6 +16,7 @@ jobs:
     - name: Run linters
       run: |
         export PATH=$PATH:$(go env GOPATH)/bin   
+        ls -la
         golangci-lint run ./...
   test:
     strategy:
