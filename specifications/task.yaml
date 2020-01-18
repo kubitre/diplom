@@ -16,6 +16,8 @@ tasks:
     repo: github.com/kubitre/for_diploma
     run:
       - go build -o main.bin main.go
+    artefacts:
+      - /main.bin
 
   LintProject:
     stage: lint
@@ -27,6 +29,17 @@ tasks:
     repo: github.com/kubitre/for_diploma
     run: 
       - golangci-lint ../ > report.xml
+    artefacts:
+      - /report.xml
+    services:
+      - mongodb:latest:
+        - name: mongoserv
+        - ports: 12255:12255
+      - rabbitmq:latest:
+        - name: rabbit-dev
+        - ports: 
+          - 5672:5672
+          - 15672:15672
 
   TestProject:
     stage: test
