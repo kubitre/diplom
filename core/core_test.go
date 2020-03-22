@@ -1,37 +1,21 @@
 package core
 
-import "testing"
+import (
+	"testing"
 
-import "github.com/kubitre/diplom/gitmod"
-
-import "github.com/kubitre/diplom/docker"
-
-import "github.com/kubitre/diplom/models"
-
-func TestCreateNewRunnerError(t *testing.T) {
-	_, err := NewCoreRunner(nil, nil, 10, nil)
-	if err == nil {
-		t.Error("success create runner but it not possible. " + err.Error())
-	}
-	t.Log("completed create runner. ")
-}
+	"github.com/kubitre/diplom/gitmod"
+	"github.com/kubitre/diplom/models"
+)
 
 func TestCreateNewRunnerSuccess(t *testing.T) {
-	dock, err := docker.NewDockerExecutor()
-	if err != nil {
-		t.Error("can not create docker executor. " + err.Error())
-	}
-	if _, err := NewCoreRunner(&gitmod.Git{}, dock, 10, nil); err != nil {
+	if _, err := NewCoreRunner(10, nil); err != nil {
 		t.Error("not created runner." + err.Error())
 	}
 }
 
 func Test_SetupConfigurationPipeline(t *testing.T) {
-	dock, err := docker.NewDockerExecutor()
-	if err != nil {
-		t.Error("can not create docker executor. " + err.Error())
-	}
-	runner, err := NewCoreRunner(&gitmod.Git{}, dock, 10, nil)
+
+	runner, err := NewCoreRunner(10, nil)
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
@@ -53,11 +37,8 @@ func Test_SetupConfigurationPipeline(t *testing.T) {
 }
 
 func Test_SetupConfigurationPipelineZeroStages(t *testing.T) {
-	dock, err := docker.NewDockerExecutor()
-	if err != nil {
-		t.Error("can not create docker executor. " + err.Error())
-	}
-	runner, err := NewCoreRunner(&gitmod.Git{}, dock, 10, nil)
+
+	runner, err := NewCoreRunner(10, nil)
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
@@ -79,11 +60,8 @@ func Test_SetupConfigurationPipelineZeroStages(t *testing.T) {
 }
 
 func Test_SetupConfigurationPipelineZeroTasks(t *testing.T) {
-	dock, err := docker.NewDockerExecutor()
-	if err != nil {
-		t.Error("can not create docker executor. " + err.Error())
-	}
-	runner, err := NewCoreRunner(&gitmod.Git{}, dock, 10, nil)
+
+	runner, err := NewCoreRunner(10, nil)
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
@@ -100,11 +78,8 @@ func Test_SetupConfigurationPipelineZeroTasks(t *testing.T) {
 }
 
 func Test_CreatePipelineError(t *testing.T) {
-	dock, err := docker.NewDockerExecutor()
-	if err != nil {
-		t.Error("can not create docker executor. " + err.Error())
-	}
-	runner, err := NewCoreRunner(&gitmod.Git{}, dock, 10, nil)
+
+	runner, err := NewCoreRunner(10, nil)
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
@@ -116,11 +91,8 @@ func Test_CreatePipelineError(t *testing.T) {
 }
 
 func Test_CreatePipelineWithConfig(t *testing.T) {
-	dock, err := docker.NewDockerExecutor()
-	if err != nil {
-		t.Error("can not create docker executor. " + err.Error())
-	}
-	runner, err := NewCoreRunner(&gitmod.Git{}, dock, 10, nil)
+
+	runner, err := NewCoreRunner(10, nil)
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}

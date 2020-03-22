@@ -13,7 +13,7 @@ tasks:
       "COPY dest1 /dest1",
       "RUN apt update && apt install --no-cache ffmpeg"
     ]
-    repo: github.com/kubitre/for_diploma
+    repo: https://github.com/kubitre/for_diplom
     run:
       - go build -o main.bin main.go
     artefacts:
@@ -26,7 +26,7 @@ tasks:
       "COPY dest1 /dest1",
       "RUN apt update && apt install --no-cache ffmpeg"
     ]
-    repo: github.com/kubitre/for_diploma
+    repo: https://github.com/kubitre/for_diplom
     run: 
       - golangci-lint ../ > report.xml
     artefacts:
@@ -48,6 +48,6 @@ tasks:
       "COPY dest1 /dest1",
       "RUN apt update && apt install --no-cache ffmpeg"
     ]
-    repo: github.com/kubitre/for_diploma
+    repo: https://github.com/kubitre/for_diplom
     run:
       - go test ./...

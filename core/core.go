@@ -4,7 +4,7 @@ import (
 	"errors"
 	"os"
 
-	"github.com/kubitre/diplom/docker"
+	"github.com/kubitre/diplom/docker_runner"
 	"github.com/kubitre/diplom/gitmod"
 	"github.com/kubitre/diplom/models"
 	log "github.com/sirupsen/logrus"
@@ -13,7 +13,7 @@ import (
 type (
 	CoreRunner struct {
 		Git        *gitmod.Git
-		Docker     *docker.DockerExecutor
+		Docker     *docker_runner.DockerExecutor
 		WorkerPull chan bool
 		WorkConfig *models.WorkConfig
 	}
@@ -24,15 +24,14 @@ type (
 )
 
 func NewCoreRunner(
-	git *gitmod.Git,
-	dock *docker.DockerExecutor,
 	amountWorkers int,
 	runnerConfig *models.WorkConfig) (*CoreRunner, error) {
-	if dock == nil {
-		return nil, errors.New("can not create runner without docker client")
+	dock, err := docker_runner.NewDockerExecutor()
+	if err != nil {
+		log.Error("can not create docker executor. " + err.Error())
 	}
 	return &CoreRunner{
-		Git:        git,
+		Git:        &gitmod.Git{},
 		Docker:     dock,
 		WorkerPull: make(chan bool, amountWorkers),
 		WorkConfig: runnerConfig,

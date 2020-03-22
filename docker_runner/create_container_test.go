@@ -1,4 +1,4 @@
-package docker
+package docker_runner
 
 import (
 	"testing"

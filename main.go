@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/kubitre/diplom/gitmod"
+	"github.com/kubitre/diplom/core"
 	"github.com/kubitre/diplom/parser"
 )
 
@@ -16,10 +16,11 @@ func main() {
 	if err != nil {
 		log.Panic(err)
 	}
-	log.Println("Tasks: ", runn.Tasks)
-
-	gt := gitmod.Git{}
-	if _, err = gt.CloneRepo("https://github.com/kubitre/for_diplom.git"); err != nil {
+	runner, err := core.NewCoreRunner(1, nil)
+	if err != nil {
+		log.Panic(err)
+	}
+	if err := runner.CreatePipeline(runn); err != nil {
 		log.Panic(err)
 	}
 
