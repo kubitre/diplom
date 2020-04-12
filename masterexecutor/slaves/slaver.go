@@ -99,8 +99,8 @@ func (slavemonitor *SlaveMonitoring) changeLastUsingServiceIndex(newindex int) {
 	slavemonitor.LastUsingService <- newindex
 }
 
-// SendSlaveWork - проксирование запроса от клиента на один из слейв сервисов
-func (slavemonitor *SlaveMonitoring) SendSlaveWork(request *http.Request, writer http.ResponseWriter) error {
+// SendSlaveTask - проксирование запроса от клиента на один из слейв сервисов
+func (slavemonitor *SlaveMonitoring) SendSlaveTask(request *http.Request, writer http.ResponseWriter) error {
 	vars := mux.Vars(request)
 	taskID := vars["taskid"]
 	if taskID == "" {

@@ -18,6 +18,7 @@ import (
 type RunnerRouter struct {
 	Router          *mux.Router
 	SlaveMonitoring *slaves.SlaveMonitoring
+	PathToLogs      string
 }
 
 const (
@@ -45,16 +46,16 @@ func initialRoutesSetup(router *mux.Router) *mux.Router {
 	return router
 }
 
-// createNewWork - создание новой задачи на обработку репозитория кандидата post {workID, work by spec}
-func (route *RunnerRouter) createNewWork(writer http.ResponseWriter, request *http.Request) {
-	var createWorkPayload payloads.CreateNewWork
+// createNewTask - создание новой задачи на обработку репозитория кандидата post {workID, work by spec}
+func (route *RunnerRouter) createNewTask(writer http.ResponseWriter, request *http.Request) {
+	var createNewTaskPayload payloads.CreateNewWork
 	defer request.Body.Close()
-	if err := json.NewDecoder(request.Body).Decode(&createWorkPayload); err != nil {
+	if err := json.NewDecoder(request.Body).Decode(&createNewTaskPayload); err != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
 			"context": map[string]string{
 				"module":  "master_executor",
 				"package": "routers",
-				"func":    "createNewWork",
+				"func":    "createNewTask",
 			},
 			"detailed": map[string]string{
 				"message": "can't unmarshal into new work model",
@@ -64,26 +65,35 @@ func (route *RunnerRouter) createNewWork(writer http.ResponseWriter, request *ht
 		return
 	}
 
-	if errRedirect := route.SlaveMonitoring.SendSlaveWork(request, writer); errRedirect != nil {
+	if errRedirect := route.SlaveMonitoring.SendSlaveTask(request, writer); errRedirect != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
 			"context": map[string]string{
 				"module":  "master_executor",
-				"package": "routers",
-				"func":    "createNewWork",
+				"package": "slaves",
+				"func":    "SendSlaveTask",
 			},
 			"detailed": map[string]string{
 				"message": "can't redirect new task into slave executor",
 				"trace":   errRedirect.Error(),
 			},
-		}, http.StatusBadRequest)
+		}, http.StatusInternalServerError)
 		return
 	}
-
+	enhancer.Response(request, writer, map[string]interface{}{
+		"context": map[string]string{
+			"module":  "master_executor",
+			"package": "routers",
+			"func":    "createNewTask",
+		},
+		"detailed": map[string]string{
+			"message": "something error",
+		},
+	}, http.StatusInternalServerError)
 	return
 }
 
-// изменить текущий статус работы (остановить, запустить) post {taskID, status: [STARTED, STOPING, FINISHING, FAILED]}
-func (route *RunnerRouter) changeWorkStatus(writer http.ResponseWriter, request *http.Request) {
+//changeTaskStatus - изменить текущий статус работы (остановить, запустить) post {taskID, status: [STARTED, STOPING, FINISHING, FAILED]}
+func (route *RunnerRouter) changeTaskStatus(writer http.ResponseWriter, request *http.Request) {
 	var statusTaskChangePayload payloads.ChangeStatusTask
 	defer request.Body.Close()
 	if err := json.NewDecoder(request.Body).Decode(&statusTaskChangePayload); err != nil {
@@ -91,7 +101,7 @@ func (route *RunnerRouter) changeWorkStatus(writer http.ResponseWriter, request 
 			"context": map[string]string{
 				"module":  "master_executor",
 				"package": "routers",
-				"func":    "changeWorkStatus",
+				"func":    "changeTaskStatus",
 			},
 			"detailed": map[string]string{
 				"message": "can't unmarshal into changeStatus model",
@@ -105,7 +115,7 @@ func (route *RunnerRouter) changeWorkStatus(writer http.ResponseWriter, request 
 			"context": map[string]string{
 				"module":  "master_executor",
 				"package": "routers",
-				"func":    "changeWorkStatus",
+				"func":    "changeTaskStatus",
 			},
 			"detailed": map[string]string{
 				"message": "can not be update status of task by unknown status",
@@ -114,28 +124,41 @@ func (route *RunnerRouter) changeWorkStatus(writer http.ResponseWriter, request 
 		}, http.StatusBadRequest)
 		return
 	}
-	route.SlaveMonitoring.TaskResultFromSlave(statusTaskChangePayload)
+	if errUpdating := route.SlaveMonitoring.TaskResultFromSlave(statusTaskChangePayload); errUpdating != nil {
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "routers",
+				"func":    "changeTaskStatus",
+			},
+			"detailed": map[string]string{
+				"message": "can not be update status",
+				"trace":   errUpdating.Error(),
+			},
+		}, http.StatusInternalServerError)
+		return
+	}
 	enhancer.Response(request, writer, map[string]interface{}{
-		"status": "not implemented yet",
-	}, http.StatusNotImplemented)
+		"status": "update status was completed",
+	}, http.StatusOK)
 	return
 }
 
-// получение логов с работы get ?workid=:workID&stage?=:nameStage
-func (route *RunnerRouter) getLogWork(writer http.ResponseWriter, request *http.Request) {
+// получение логов с работы get ?taskID=:taskID&stage?=:nameStage
+func (route *RunnerRouter) getLogTask(writer http.ResponseWriter, request *http.Request) {
 	// get result task by his id
 	log.Println("start working with getting log")
 	vars := mux.Vars(request)
-	workID := vars["workid"]
+	taskID := vars["taskID"]
 	stage := vars["stage"]
-	log.Println("workid: " + workID + "stage name: " + stage)
-	files := workID
+	log.Println("taskID: " + taskID + "stage name: " + stage)
+	files := taskID
 	if stage != "" {
 		files += "_" + stage + ".log"
 	}
 	writer.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext("logs/"+files)))
-	log.Println("start serving log: " + "logs/" + files)
-	http.ServeFile(writer, request, "logs/"+files)
+	log.Println("start serving log: " + route.PathToLogs + "/" + files)
+	http.ServeFile(writer, request, route.PathToLogs+"/"+files)
 	return
 }
 
@@ -149,12 +172,12 @@ func (route *RunnerRouter) getAllLogsTree(writer http.ResponseWriter, request *h
 	return
 }
 
-// создание логов с выполненной работы post {workid, stage, logcontent}
-func (route *RunnerRouter) createLogWork(writer http.ResponseWriter, request *http.Request) {
+// создание логов с выполненной работы post {taskID, stage, logcontent}
+func (route *RunnerRouter) createLogTask(writer http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
-	workid := vars["workid"]
+	taskID := vars["taskID"]
 	stage := vars["stage"]
-	errDirCreating := os.MkdirAll("logs/"+workid, os.ModePerm)
+	errDirCreating := os.MkdirAll(route.PathToLogs+"/"+taskID, os.ModePerm)
 	if errDirCreating != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
 			"context": map[string]string{
@@ -169,7 +192,7 @@ func (route *RunnerRouter) createLogWork(writer http.ResponseWriter, request *ht
 		}, http.StatusBadRequest)
 		return
 	}
-	_, err := os.Create("logs/" + workid + "/" + stage + ".log")
+	_, err := os.Create(route.PathToLogs + "/" + taskID + "/" + stage + ".log")
 	if err != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
 			"context": map[string]string{
@@ -186,13 +209,13 @@ func (route *RunnerRouter) createLogWork(writer http.ResponseWriter, request *ht
 	}
 
 	enhancer.Response(request, writer, map[string]interface{}{
-		"status": "not implemented yet",
-	}, http.StatusNotImplemented)
+		"status": "completed create log task by taskID and stage name",
+	}, http.StatusOK)
 	return
 }
 
-// получение статуса работы над задачей get ?workid=:workID
-func (route *RunnerRouter) getWorkStatus(writer http.ResponseWriter, request *http.Request) {
+// получение статуса задачи GET /taskID=:taskID
+func (route *RunnerRouter) getTaskStatus(writer http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	taskID := vars["taskID"]
 	if taskID == "" {
@@ -200,7 +223,7 @@ func (route *RunnerRouter) getWorkStatus(writer http.ResponseWriter, request *ht
 			"context": map[string]string{
 				"module":  "master_executor",
 				"package": "routers",
-				"func":    "getWorkStatus",
+				"func":    "getTaskStatus",
 			},
 			"detailed": map[string]string{
 				"message": "taskID can not be empty or null",
@@ -214,7 +237,7 @@ func (route *RunnerRouter) getWorkStatus(writer http.ResponseWriter, request *ht
 			"context": map[string]string{
 				"module":  "master_executor",
 				"package": "slaves",
-				"func":    "GetTaskStatus",
+				"func":    "getTaskStatus",
 			},
 			"detailed": map[string]string{
 				"message": "can not get task status",
@@ -260,11 +283,11 @@ func (route *RunnerRouter) notFoundHandler(writer http.ResponseWriter, request *
 /*ConfiguringRoutes - конфигурирование маршрутов
  */
 func (route *RunnerRouter) ConfiguringRoutes() {
-	route.Router.HandleFunc(apiTaskCreate, route.createNewWork).Methods(http.MethodPost)
-	route.Router.HandleFunc(apiTaskChangeOrGetStatus, route.changeWorkStatus).Methods(http.MethodPost)
-	route.Router.HandleFunc(apiTaskChangeOrGetStatus, route.getWorkStatus).Methods(http.MethodGet)
-	route.Router.HandleFunc(apiTaskLog, route.createLogWork).Methods(http.MethodPost)
-	route.Router.HandleFunc(apiTaskLog, route.getLogWork).Methods(http.MethodGet)
+	route.Router.HandleFunc(apiTaskCreate, route.createNewTask).Methods(http.MethodPost)
+	route.Router.HandleFunc(apiTaskChangeOrGetStatus, route.changeTaskStatus).Methods(http.MethodPost)
+	route.Router.HandleFunc(apiTaskChangeOrGetStatus, route.getTaskStatus).Methods(http.MethodGet)
+	route.Router.HandleFunc(apiTaskLog, route.createLogTask).Methods(http.MethodPost)
+	route.Router.HandleFunc(apiTaskLog, route.getLogTask).Methods(http.MethodGet)
 	route.Router.HandleFunc(apiTaskLogAll, route.getAllLogsTree).Methods(http.MethodGet)
 	route.Router.HandleFunc(apiAvailableWorkers, route.getStatusWorkers).Methods(http.MethodGet)
 
