@@ -8,8 +8,8 @@ import (
 )
 
 /*ParseObj - parsing from yaml*/
-func ParseObj(data []byte) (*models.WorkConfig, error) {
-	run := models.WorkConfig{}
+func ParseObj(data []byte) (*models.TaskConfig, error) {
+	run := models.TaskConfig{}
 	err := yaml.Unmarshal(data, &run)
 	if err != nil {
 		return nil, err

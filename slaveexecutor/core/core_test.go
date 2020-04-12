@@ -3,28 +3,37 @@ package core
 import (
 	"testing"
 
-	"github.com/kubitre/diplom/gitmod"
-	"github.com/kubitre/diplom/models"
+	"github.com/kubitre/diplom/slaveexecutor/config"
+	"github.com/kubitre/diplom/slaveexecutor/gitmod"
+	"github.com/kubitre/diplom/slaveexecutor/models"
 )
 
 func TestCreateNewRunnerSuccess(t *testing.T) {
-	if _, err := NewCoreRunner(10, nil); err != nil {
+	if _, err := NewCoreSlaveRunner(&config.SlaveConfiguration{
+		AmountPullWorkers:          10,
+		AmountParallelTaskPerStage: 100,
+	}); err != nil {
 		t.Error("not created runner." + err.Error())
 	}
 }
 
 func Test_SetupConfigurationPipeline(t *testing.T) {
 
-	runner, err := NewCoreRunner(10, nil)
+	runner, err := NewCoreSlaveRunner(
+		&config.SlaveConfiguration{
+			AmountPullWorkers:          10,
+			AmountParallelTaskPerStage: 100,
+		},
+	)
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
-	if err := runner.SetupConfigurationPipeline(&models.WorkConfig{
+	if err := runner.SetupConfigurationPipeline(&models.TaskConfig{
 		Stages: []string{
 			"test",
 		},
-		Tasks: map[string]models.Task{
-			"Test": models.Task{
+		Jobs: map[string]models.Job{
+			"Test": models.Job{
 				Stage: "test",
 				ShellCommands: []string{
 					"ls -la",
@@ -38,14 +47,17 @@ func Test_SetupConfigurationPipeline(t *testing.T) {
 
 func Test_SetupConfigurationPipelineZeroStages(t *testing.T) {
 
-	runner, err := NewCoreRunner(10, nil)
+	runner, err := NewCoreSlaveRunner(&config.SlaveConfiguration{
+		AmountPullWorkers:          10,
+		AmountParallelTaskPerStage: 100,
+	})
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
-	if err := runner.SetupConfigurationPipeline(&models.WorkConfig{
+	if err := runner.SetupConfigurationPipeline(&models.TaskConfig{
 		Stages: []string{},
-		Tasks: map[string]models.Task{
-			"Test": models.Task{
+		Jobs: map[string]models.Job{
+			"Test": models.Job{
 				Stage: "test",
 				ShellCommands: []string{
 					"ls -la",
@@ -61,15 +73,18 @@ func Test_SetupConfigurationPipelineZeroStages(t *testing.T) {
 
 func Test_SetupConfigurationPipelineZeroTasks(t *testing.T) {
 
-	runner, err := NewCoreRunner(10, nil)
+	runner, err := NewCoreSlaveRunner(&config.SlaveConfiguration{
+		AmountPullWorkers:          10,
+		AmountParallelTaskPerStage: 100,
+	})
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
-	if err := runner.SetupConfigurationPipeline(&models.WorkConfig{
+	if err := runner.SetupConfigurationPipeline(&models.TaskConfig{
 		Stages: []string{
 			"test",
 		},
-		Tasks: map[string]models.Task{},
+		Jobs: map[string]models.Job{},
 	}); err != nil {
 		t.Log(err)
 	} else {
@@ -79,7 +94,10 @@ func Test_SetupConfigurationPipelineZeroTasks(t *testing.T) {
 
 func Test_CreatePipelineError(t *testing.T) {
 
-	runner, err := NewCoreRunner(10, nil)
+	runner, err := NewCoreSlaveRunner(&config.SlaveConfiguration{
+		AmountPullWorkers:          10,
+		AmountParallelTaskPerStage: 100,
+	})
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
@@ -92,16 +110,19 @@ func Test_CreatePipelineError(t *testing.T) {
 
 func Test_CreatePipelineWithConfig(t *testing.T) {
 
-	runner, err := NewCoreRunner(10, nil)
+	runner, err := NewCoreSlaveRunner(&config.SlaveConfiguration{
+		AmountPullWorkers:          10,
+		AmountParallelTaskPerStage: 100,
+	})
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
-	if err := runner.CreatePipeline(&models.WorkConfig{
+	if err := runner.CreatePipeline(&models.TaskConfig{
 		Stages: []string{
 			"test",
 		},
-		Tasks: map[string]models.Task{
-			"test": models.Task{
+		Jobs: map[string]models.Job{
+			"test": models.Job{
 				Stage:               "test",
 				RepositoryCandidate: "https://github.com/kubitre/for_diplom",
 				ShellCommands: []string{

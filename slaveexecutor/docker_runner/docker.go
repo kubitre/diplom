@@ -19,13 +19,14 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/term"
+	"github.com/docker/go-connections/nat"
 )
 
 type (
+	/*DockerExecutor - главный исполняющий модуль заданий связанных с докером*/
 	DockerExecutor struct {
 		Status       chan bool // syncronization for executor
 		DockerClient *client.Client
@@ -38,9 +39,9 @@ const (
 	entryScript       = "/entry.bash"
 )
 
-// Initialize new docker client executor
+// NewDockerExecutor - создание нового докер исполнителя
 func NewDockerExecutor() (*DockerExecutor, error) {
-	cli, err := client.NewClientWithOpts()
+	cli, err := client.NewEnvClient()
 	if err != nil {
 		log.Error("can not initiate client for docker api. Error: ", err.Error())
 		return nil, err
@@ -51,7 +52,7 @@ func NewDockerExecutor() (*DockerExecutor, error) {
 	}, nil
 }
 
-// pulling image from hub.docker.com
+// PullImage - пуллинг публичных образов
 func (docker *DockerExecutor) PullImage(image string) error {
 	ctx := context.Background()
 	respPulling, errPulling := docker.DockerClient.ImagePull(ctx, image, types.ImagePullOptions{})
@@ -65,21 +66,57 @@ func (docker *DockerExecutor) PullImage(image string) error {
 }
 
 // CreateContainer - function for creating new container with docker file such as json
-func (docker *DockerExecutor) CreateContainer(payload *models.ContainerCreatePayload) error {
+func (docker *DockerExecutor) CreateContainer(payload *models.ContainerCreatePayload) (string, error) {
 	ctx := context.Background()
+
+	hostBinding := nat.PortBinding{
+		HostIP:   "0.0.0.0",
+		HostPort: "8000",
+	}
+	containerPort, err := nat.NewPort("tcp", "80")
+	if err != nil {
+		panic("Unable to get the port")
+	}
+	portBinding := nat.PortMap{containerPort: []nat.PortBinding{hostBinding}}
 	repsCreating, err := docker.DockerClient.ContainerCreate(ctx, &container.Config{
-		Image:      payload.BaseImageName,
-		WorkingDir: payload.WorkDir,
-		Shell:      payload.ShellCommands,
+		Image: payload.BaseImageName,
 	}, &container.HostConfig{
-		AutoRemove: true,
-	}, &network.NetworkingConfig{}, payload.ContainerName)
+		AutoRemove:   false,
+		PortBindings: portBinding,
+	}, nil, payload.ContainerName)
 	if err != nil {
 		log.Error("can not create container with default configuration. Error: ", err.Error())
-		return docker.removeContainer("test_env_candidate_1")
+		return "", docker.removeContainer(payload.ContainerName)
 	}
-	log.Debug("success create container. Output oprts: ", repsCreating)
-	return nil
+	log.Info("success create container. Output oprts: ", repsCreating)
+	return repsCreating.ID, nil
+}
+
+func (docker *DockerExecutor) RunContainer(containerID string) (io.ReadCloser, error) {
+	ctx := context.Background()
+	if errStart := docker.DockerClient.ContainerStart(ctx, containerID, types.ContainerStartOptions{}); errStart != nil {
+		return nil, errStart
+	}
+	statusCH, errCh := docker.DockerClient.ContainerWait(ctx, containerID, container.WaitConditionNextExit)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return nil, err
+		}
+	case <-statusCH:
+	}
+	log.Info("container start: ", containerID)
+	response, err := docker.DockerClient.ContainerLogs(ctx, containerID, types.ContainerLogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     true,
+	})
+	if err != nil {
+		log.Error("can not reading docker container logs: ", err)
+		return nil, err
+	}
+
+	return response, nil
 }
 
 func (docker *DockerExecutor) preparingBytesFromDockerfile(dockerFile []string) []byte {
@@ -118,6 +155,8 @@ func (docker *DockerExecutor) getFinalNamePath(path string) (string, error) {
 	return fileParts[len(fileParts)-1], nil
 }
 
+/*PrepareDockerEnv - подготовка докер файла для его сборки
+ */
 func (docker *DockerExecutor) PrepareDockerEnv(neededPath map[string]string, dockerFile, shell []string) error {
 	fromDockerfile := neededPath
 	dockerFile = docker.getPathNeededToCopyInContext(dockerFile, &fromDockerfile)
@@ -322,6 +361,8 @@ func (docker *DockerExecutor) compressDir(path string) (*bytes.Buffer, error) {
 	return buf, nil
 }
 
+/*CreateImageMem - создание образа по заданному dockerfile с заданными инструкциями для выполнения + пометка образа списком тэгов
+ */
 func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, neededPath map[string]string) error {
 	ctx := context.Background()
 	err := docker.PrepareDockerEnv(neededPath, dockerFile, shell)
@@ -338,6 +379,7 @@ func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, n
 
 	dockerFileTar := bytes.NewReader(resultBuffer.Bytes())
 	buildOptions := types.ImageBuildOptions{
+
 		Context:    dockerFileTar,
 		Dockerfile: buildContextPath + "/" + dockerFileMemName,
 		Tags:       tags,

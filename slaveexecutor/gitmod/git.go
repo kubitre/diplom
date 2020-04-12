@@ -1,9 +1,10 @@
 package gitmod
 
 import (
-	log "github.com/sirupsen/logrus"
 	"os"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/google/uuid"
 	"gopkg.in/src-d/go-git.v4"
@@ -23,6 +24,7 @@ const (
 	stringErrorAuthenticated = "need auth"
 )
 
+/*CloneRepo - клонирование репозитория кандата по его url*/
 func (gt *Git) CloneRepo(url string) (string, error) {
 	id := uuid.New()
 	res, err := git.PlainClone("repo_"+id.String(), false, &git.CloneOptions{
@@ -48,6 +50,7 @@ func (gt *Git) getTypeErrorCode(nameError string) ErrorType {
 	}
 }
 
+/*GetTypeError - получение расшифровки ошибки*/
 func (gt *Git) GetTypeError(err error) ErrorType {
 	for key, val := range map[string]ErrorType{
 		stringErrorExistingRepo:  ErrorExistingRepository,
@@ -59,6 +62,7 @@ func (gt *Git) GetTypeError(err error) ErrorType {
 	return ErrorUnrecognized
 }
 
+/*RemoveRepo - удалить репозиторий кандидата по pathname*/
 func (gt *Git) RemoveRepo(repoPath string) error {
 	return os.RemoveAll(repoPath)
 }

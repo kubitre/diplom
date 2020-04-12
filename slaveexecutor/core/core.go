@@ -1,9 +1,12 @@
 package core
 
 import (
+	"bytes"
 	"errors"
 	"os"
 
+	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/kubitre/diplom/slaveexecutor/config"
 	"github.com/kubitre/diplom/slaveexecutor/docker_runner"
 	"github.com/kubitre/diplom/slaveexecutor/gitmod"
 	"github.com/kubitre/diplom/slaveexecutor/models"
@@ -11,80 +14,126 @@ import (
 )
 
 type (
-	/*CoreSlaveRunner - ядро для слейва*/
+	// CoreSlaveRunner - ядро для слейва*/
 	CoreSlaveRunner struct {
-		Git        *gitmod.Git
-		Docker     *docker_runner.DockerExecutor
-		WorkerPull chan bool
-		WorkConfig *models.WorkConfig
+		Git          *gitmod.Git
+		Docker       *docker_runner.DockerExecutor
+		WorkerPull   []chan models.TaskConfig
+		ChannelClose chan string
+		SlaveConfig  *config.SlaveConfiguration
 	}
 	/*Worker - единичная воркер функция, которая отвечает за выполнение всех job на одной стадии одной задачи*/
 	Worker struct {
-		Task   chan models.Task       // текущая задача у воркера
+		Task   chan models.Job        // текущая задача у воркера
 		Result chan models.OutputTask // текущий результат у воркера (лог файл и попытка спарсить результат)
 	}
 )
 
 /*NewCoreSlaveRunner - инициализация нового ядра слейв модуля*/
 func NewCoreSlaveRunner(
-	amountWorkers int,
-	runnerConfig *models.WorkConfig) (*CoreRunner, error) {
+	config *config.SlaveConfiguration,
+) (*CoreSlaveRunner, error) {
 	dock, err := docker_runner.NewDockerExecutor()
 	if err != nil {
 		log.Error("can not create docker executor. " + err.Error())
 	}
-	return &CoreRunner{
-		Git:        &gitmod.Git{},
-		Docker:     dock,
-		WorkerPull: make(chan bool, amountWorkers),
-		WorkConfig: runnerConfig,
+	return &CoreSlaveRunner{
+		Git:          &gitmod.Git{},
+		Docker:       dock,
+		ChannelClose: make(chan string, 1),
+		SlaveConfig:  config,
 	}, nil
 }
 
-/*SetupConfigurationPipeline - setting up configuration if its no configuring in start*/
-func (core *CoreSlaveRunner) SetupConfigurationPipeline(config *models.WorkConfig) error {
+/*RunWorkers - запуск пула воркеров*/
+func (core *CoreSlaveRunner) RunWorkers() {
+	runParallelExecutors(core.SlaveConfig.AmountPullWorkers, core.ChannelClose, core)
+}
+
+func runParallelExecutors(
+	amountParallelExecutors int,
+	chanelForClosed chan string,
+	core *CoreSlaveRunner) []chan models.TaskConfig {
+	resultChannels := make([]chan models.TaskConfig, amountParallelExecutors)
+	for i := 0; i < amountParallelExecutors; i++ {
+		resultChannels[i] = make(chan models.TaskConfig, 1)
+		go executor(i, resultChannels[i], chanelForClosed, *core)
+	}
+
+	return resultChannels
+}
+
+func executor(executorID int, taskChallenge chan models.TaskConfig, close chan string, core CoreSlaveRunner) {
+	for {
+		select {
+		case close := <-close:
+			log.Info("stop worker: ", executorID, " by closed signal: ", close)
+		case newTask := <-taskChallenge:
+			log.Debug("start working with new task: ", newTask)
+			if err := core.CreatePipeline(&newTask); err != nil {
+				log.Error("can not create pipeline for task. Err: ", err)
+			}
+			// send to Master node result log
+		}
+	}
+}
+
+/*SetupConfigurationPipeline - setting up configuration if its no configuring in start
+NOW USING ONLY FOR TESTING
+*/
+func (core *CoreSlaveRunner) SetupConfigurationPipeline(config *models.TaskConfig) error {
 	if len(config.Stages) == 0 {
 		return errors.New("runner config should have 1 or mode stages annotation")
 	}
-	if len(config.Tasks) == 0 {
+	if len(config.Jobs) == 0 {
 		return errors.New("runner config should have 1 or more tasks")
 	}
-	core.WorkConfig = config
 	return nil
 }
 
 /*CreatePipeline - создание пайплайна на выполнение одной задачи*/
-func (core *CoreSlaveRunner) CreatePipeline(config *models.WorkConfig) error {
-	if core.WorkConfig == nil {
-		if config == nil {
-			return errors.New("can not create pipeline without configuration. Please setup configuration and continue")
-		}
-		core.WorkConfig = config
+func (core *CoreSlaveRunner) CreatePipeline(taskConfig *models.TaskConfig) error {
+	if taskConfig == nil {
+		return errors.New("can not create pipeline without configuration. Please setup configuration and continue")
 	}
-	for _, stage := range config.Stages {
+	for _, stage := range taskConfig.Stages {
 		log.Info("start working on stage: " + stage)
-		if err := core.executingTaskInStage(stage); err != nil {
-			log.Error("can not execute stage. ", err)
-			return err
-		}
+		core.executingJobsInStage(stage, taskConfig)
 	}
 	return nil
 }
 
-func (core *CoreSlaveRunner) executingTaskInStage(stage string) error {
-	currentTasks := core.getTasksByStage(stage)
-	for taskIdName, task := range currentTasks {
-		log.Info("current task: ", task)
-		if err := core.prepareTask(taskIdName, &task); err != nil {
-			log.Error("error while preparing task. ", err)
-			return err
-		}
+func (core *CoreSlaveRunner) executingJobsInStage(stage string, taskConfig *models.TaskConfig) {
+	currentJobs := core.getJobsByStage(stage, taskConfig.Jobs, taskConfig.TaskID)
+	jobResult := make(chan int, core.SlaveConfig.AmountParallelTaskPerStage)
+	for _, job := range currentJobs {
+		log.Info("current tasks for stage: ", stage, "; job: ", job)
+		go executingParallelJobPerStage(job, core, jobResult)
 	}
-	return nil
 }
 
-func (core *CoreSlaveRunner) getRepoCandidate(taskName string) (string, error) {
-	path, err := core.Git.CloneRepo(core.WorkConfig.Tasks[taskName].RepositoryCandidate)
+func executingParallelJobPerStage(job models.Job, core *CoreSlaveRunner, jobResult chan int) {
+	if err := core.prepareTask(job); err != nil {
+		log.Error("error while preparing task. ", err)
+	}
+	containerID, err := core.Docker.CreateContainer(&models.ContainerCreatePayload{
+		BaseImageName: job.TaskID + "_" + job.JobName,
+		ContainerName: "execute_" + job.TaskID + "_" + job.JobName,
+	})
+	responseCloser, err := core.Docker.RunContainer(containerID)
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	_, err = stdcopy.StdCopy(stdout, stderr, responseCloser)
+	log.Info("STDOUT: ", string(stdout.Bytes()))
+	log.Info("STDERROR: ", string(stderr.Bytes()))
+	defer responseCloser.Close()
+	if err != nil {
+		jobResult <- -1
+	}
+}
+
+func (core *CoreSlaveRunner) getRepoCandidate(job models.Job) (string, error) {
+	path, err := core.Git.CloneRepo(job.RepositoryCandidate)
 	if err != nil {
 		switch core.Git.GetTypeError(err) {
 		case gitmod.ErrorAuthenticate:
@@ -98,15 +147,15 @@ func (core *CoreSlaveRunner) getRepoCandidate(taskName string) (string, error) {
 	return path, nil
 }
 
-func (core *CoreSlaveRunner) prepareTask(taskName string, task *models.Task) error {
-	pathRepo, err := core.getRepoCandidate(taskName)
+func (core *CoreSlaveRunner) prepareTask(job models.Job) error {
+	pathRepo, err := core.getRepoCandidate(job)
 	if err != nil {
 		return err
 	}
 
-	if err := core.Docker.CreateImageMem(core.appendRepoIntoDocker(pathRepo, task),
-		task.ShellCommands,
-		[]string{core.WorkConfig.RunID + taskName},
+	if err := core.Docker.CreateImageMem(core.appendRepoIntoDocker(pathRepo, job),
+		job.ShellCommands,
+		[]string{job.TaskID + "_" + job.JobName},
 		map[string]string{}); err != nil {
 		return err
 	}
@@ -116,16 +165,25 @@ func (core *CoreSlaveRunner) prepareTask(taskName string, task *models.Task) err
 	return nil
 }
 
-func (core *CoreSlaveRunner) appendRepoIntoDocker(path string, task *models.Task) []string {
-	return append(task.Image, `COPY `+path+` /repoCandidate`)
+func (core *CoreSlaveRunner) appendRepoIntoDocker(path string, job models.Job) []string {
+	return append(job.Image, `COPY `+path+` /repoCandidate`)
 }
 
-func (core *CoreSlaveRunner) getTasksByStage(stage string) map[string]models.Task {
-	result := make(map[string]models.Task)
-	for taskId, task := range core.WorkConfig.Tasks {
-		log.Info("current task id: ", taskId)
-		if task.Stage == stage {
-			result[taskId] = task
+/*getJobsByStage - получение всех исполняемых job на stage */
+func (core *CoreSlaveRunner) getJobsByStage(stage string, jobs map[string]models.Job, taskID string) []models.Job {
+	result := []models.Job{}
+	for jobID, job := range jobs {
+		log.Info("current task id: ", jobID)
+		enhanceJob := models.Job{
+			JobName:             jobID,
+			Stage:               stage,
+			TaskID:              taskID,
+			Image:               job.Image,
+			RepositoryCandidate: job.RepositoryCandidate,
+			ShellCommands:       job.ShellCommands,
+		}
+		if job.Stage == stage {
+			result = append(result, enhanceJob)
 		}
 	}
 	return result
