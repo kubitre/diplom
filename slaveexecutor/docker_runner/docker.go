@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kubitre/diplom/models"
-	"github.com/kubitre/diplom/utils"
+	"github.com/kubitre/diplom/slaveexecutor/models"
+	"github.com/kubitre/diplom/slaveexecutor/utils"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/docker/docker/api/types"

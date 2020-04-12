@@ -4,26 +4,29 @@ import (
 	"errors"
 	"os"
 
-	"github.com/kubitre/diplom/docker_runner"
-	"github.com/kubitre/diplom/gitmod"
-	"github.com/kubitre/diplom/models"
+	"github.com/kubitre/diplom/slaveexecutor/docker_runner"
+	"github.com/kubitre/diplom/slaveexecutor/gitmod"
+	"github.com/kubitre/diplom/slaveexecutor/models"
 	log "github.com/sirupsen/logrus"
 )
 
 type (
-	CoreRunner struct {
+	/*CoreSlaveRunner - ядро для слейва*/
+	CoreSlaveRunner struct {
 		Git        *gitmod.Git
 		Docker     *docker_runner.DockerExecutor
 		WorkerPull chan bool
 		WorkConfig *models.WorkConfig
 	}
+	/*Worker - единичная воркер функция, которая отвечает за выполнение всех job на одной стадии одной задачи*/
 	Worker struct {
-		Task   chan models.Task
-		Result chan models.OutputTask
+		Task   chan models.Task       // текущая задача у воркера
+		Result chan models.OutputTask // текущий результат у воркера (лог файл и попытка спарсить результат)
 	}
 )
 
-func NewCoreRunner(
+/*NewCoreSlaveRunner - инициализация нового ядра слейв модуля*/
+func NewCoreSlaveRunner(
 	amountWorkers int,
 	runnerConfig *models.WorkConfig) (*CoreRunner, error) {
 	dock, err := docker_runner.NewDockerExecutor()
@@ -38,8 +41,8 @@ func NewCoreRunner(
 	}, nil
 }
 
-/*SetupConfiguration - setting up configuration if its no configuring in start*/
-func (core *CoreRunner) SetupConfigurationPipeline(config *models.WorkConfig) error {
+/*SetupConfigurationPipeline - setting up configuration if its no configuring in start*/
+func (core *CoreSlaveRunner) SetupConfigurationPipeline(config *models.WorkConfig) error {
 	if len(config.Stages) == 0 {
 		return errors.New("runner config should have 1 or mode stages annotation")
 	}
@@ -50,7 +53,8 @@ func (core *CoreRunner) SetupConfigurationPipeline(config *models.WorkConfig) er
 	return nil
 }
 
-func (core *CoreRunner) CreatePipeline(config *models.WorkConfig) error {
+/*CreatePipeline - создание пайплайна на выполнение одной задачи*/
+func (core *CoreSlaveRunner) CreatePipeline(config *models.WorkConfig) error {
 	if core.WorkConfig == nil {
 		if config == nil {
 			return errors.New("can not create pipeline without configuration. Please setup configuration and continue")
@@ -67,7 +71,7 @@ func (core *CoreRunner) CreatePipeline(config *models.WorkConfig) error {
 	return nil
 }
 
-func (core *CoreRunner) executingTaskInStage(stage string) error {
+func (core *CoreSlaveRunner) executingTaskInStage(stage string) error {
 	currentTasks := core.getTasksByStage(stage)
 	for taskIdName, task := range currentTasks {
 		log.Info("current task: ", task)
@@ -79,7 +83,7 @@ func (core *CoreRunner) executingTaskInStage(stage string) error {
 	return nil
 }
 
-func (core *CoreRunner) getRepoCandidate(taskName string) (string, error) {
+func (core *CoreSlaveRunner) getRepoCandidate(taskName string) (string, error) {
 	path, err := core.Git.CloneRepo(core.WorkConfig.Tasks[taskName].RepositoryCandidate)
 	if err != nil {
 		switch core.Git.GetTypeError(err) {
@@ -94,7 +98,7 @@ func (core *CoreRunner) getRepoCandidate(taskName string) (string, error) {
 	return path, nil
 }
 
-func (core *CoreRunner) prepareTask(taskName string, task *models.Task) error {
+func (core *CoreSlaveRunner) prepareTask(taskName string, task *models.Task) error {
 	pathRepo, err := core.getRepoCandidate(taskName)
 	if err != nil {
 		return err
@@ -112,11 +116,11 @@ func (core *CoreRunner) prepareTask(taskName string, task *models.Task) error {
 	return nil
 }
 
-func (core *CoreRunner) appendRepoIntoDocker(path string, task *models.Task) []string {
+func (core *CoreSlaveRunner) appendRepoIntoDocker(path string, task *models.Task) []string {
 	return append(task.Image, `COPY `+path+` /repoCandidate`)
 }
 
-func (core *CoreRunner) getTasksByStage(stage string) map[string]models.Task {
+func (core *CoreSlaveRunner) getTasksByStage(stage string) map[string]models.Task {
 	result := make(map[string]models.Task)
 	for taskId, task := range core.WorkConfig.Tasks {
 		log.Info("current task id: ", taskId)

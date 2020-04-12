@@ -3,7 +3,7 @@ package parser
 import (
 	"io/ioutil"
 
-	"github.com/kubitre/diplom/models"
+	"github.com/kubitre/diplom/slaveexecutor/models"
 	"gopkg.in/yaml.v2"
 )
 
