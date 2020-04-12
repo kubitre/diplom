@@ -12,6 +12,11 @@ import (
 	"github.com/kubitre/diplom/masterexecutor/config"
 )
 
+const (
+	slavePattern = "slave-executor#"
+	tagSlave     = "executor"
+)
+
 type Discovery struct {
 	CurrentServiceName   string
 	ConsulClient         *consulapi.Client
@@ -50,6 +55,7 @@ func (discovery *Discovery) RegisterServiceWithConsul() {
 	registration.ID = "master-executor#" + uuid.New().String()
 	discovery.CurrentServiceName = registration.ID
 	registration.Name = "master-executor"
+	registration.Tags = []string{"master", "executor"}
 	log.Println("registration information about out service: ", registration)
 	address := hostname()
 	registration.Address = address
@@ -73,9 +79,22 @@ func (discovery *Discovery) UnregisterCurrentService() {
 	}
 }
 
-/*GetService - получение текущих сервисов из consul*/
-func (discovery *Discovery) GetService(serviceName string) {
+/*CheckNewSlaves - получение всех сервисов слейв из консула*/
+func (discovery *Discovery) CheckNewSlaves() []*consulapi.CatalogService {
+	allServices, _, err := discovery.ConsulClient.Catalog().Service(slavePattern, tagSlave, nil)
+	if err != nil {
+		log.Println(err)
+	}
+	return allServices
+}
 
+/*GetService - получение текущих сервисов из consul*/
+func (discovery *Discovery) GetService(serviceName, tag string) {
+	allServices, _, err := discovery.ConsulClient.Catalog().Service(serviceName, tag, nil)
+	if err != nil {
+		log.Println(err)
+	}
+	log.Println(allServices[0])
 }
 
 func port() string {

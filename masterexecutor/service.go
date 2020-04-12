@@ -25,9 +25,13 @@ func main() {
 	if err != nil {
 		log.Panic("can not configuring service by config: ", err)
 	}
-	runnerCore := core.InitNewCore(config)
+	runnerCore, err := core.InitNewCore(config)
+	if err != nil {
+		log.Panic("can not initialize core: ", err)
+	}
 	runnerCore.Run(config)
 	router := runnerCore.GetRouter()
+	runnerCore.Discovery.GetService("master-executor", "executor")
 	go handlingGracefullShutdown(sig, runnerCore)
 	if err := http.ListenAndServe(":"+strconv.Itoa(config.APIPort), router); err != nil {
 		log.Panic("can not start listen and serve: ", err)

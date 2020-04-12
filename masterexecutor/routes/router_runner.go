@@ -11,32 +11,33 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/kubitre/diplom/masterexecutor/enhancer"
 	"github.com/kubitre/diplom/masterexecutor/payloads"
+	"github.com/kubitre/diplom/masterexecutor/slaves"
 )
 
 //RunnerRouter - main router for master runner
 type RunnerRouter struct {
-	Router *mux.Router
+	Router          *mux.Router
+	SlaveMonitoring *slaves.SlaveMonitoring
 }
 
 const (
-	apiConfig           = "/configuration"
-	apiWorkers          = "/workers"
-	apiAvailableWorkers = apiWorkers + "/status"
-	apiWork             = "/work"
-	apiWorkCreate       = apiWork + "/create"
-	apiWorkChange       = apiWork + "/change"
-	apiWorkLog          = apiWork + "/log"
-	apiWorkLogAll       = apiWorkLog + "/getAll"
-	apiWorkLogGetCreate = apiWorkLog + "/{workid:\\w+}/{stage:\\w+}"
-	apiWorkStatus       = apiWork + "/status"
+	apiConfig                = "/configuration"
+	apiWorkers               = "/workers"
+	apiAvailableWorkers      = apiWorkers + "/status"
+	apiTask                  = "/task"
+	apiTaskCreate            = apiTask + "/create"
+	apiTaskChangeOrGetStatus = apiTask + "/{taskID:\\w+}/status"
+	apiTaskLog               = apiTask + "/{taskID:\\w+}/log/{stage:\\w+}"
+	apiTaskLogAll            = apiTask + "/getlogs"
 
 	apiHealthCheck = "/health"
 )
 
 // InitializeRunnerRouter - инициализация роутера мастер ноды
-func InitializeRunnerRouter() *RunnerRouter {
+func InitializeRunnerRouter(slaveMonitor *slaves.SlaveMonitoring) *RunnerRouter {
 	return &RunnerRouter{
-		Router: mux.NewRouter(),
+		Router:          mux.NewRouter(),
+		SlaveMonitoring: slaveMonitor,
 	}
 }
 
@@ -63,20 +64,29 @@ func (route *RunnerRouter) createNewWork(writer http.ResponseWriter, request *ht
 		return
 	}
 
-	// choose available slave or by round robin
-	//
-	http.Redirect(writer, request, "http://localhost:9998", http.StatusUseProxy)
-	enhancer.Response(request, writer, map[string]interface{}{
-		"status": "not implemented yet",
-	}, http.StatusNotImplemented)
+	if errRedirect := route.SlaveMonitoring.SendSlaveWork(request, writer); errRedirect != nil {
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "routers",
+				"func":    "createNewWork",
+			},
+			"detailed": map[string]string{
+				"message": "can't redirect new task into slave executor",
+				"trace":   errRedirect.Error(),
+			},
+		}, http.StatusBadRequest)
+		return
+	}
+
 	return
 }
 
-// изменить текущий статус работы (остановить, запустить) post {workID, status: [Start, Stop, Wait]}
+// изменить текущий статус работы (остановить, запустить) post {taskID, status: [STARTED, STOPING, FINISHING, FAILED]}
 func (route *RunnerRouter) changeWorkStatus(writer http.ResponseWriter, request *http.Request) {
-	var createWorkPayload payloads.CreateNewWork
+	var statusTaskChangePayload payloads.ChangeStatusTask
 	defer request.Body.Close()
-	if err := json.NewDecoder(request.Body).Decode(&createWorkPayload); err != nil {
+	if err := json.NewDecoder(request.Body).Decode(&statusTaskChangePayload); err != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
 			"context": map[string]string{
 				"module":  "master_executor",
@@ -90,8 +100,21 @@ func (route *RunnerRouter) changeWorkStatus(writer http.ResponseWriter, request 
 		}, http.StatusBadRequest)
 		return
 	}
-	// get slave by work id
-	// redirect into slave
+	if errValide := statusTaskChangePayload.Validate(); errValide != nil {
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "routers",
+				"func":    "changeWorkStatus",
+			},
+			"detailed": map[string]string{
+				"message": "can not be update status of task by unknown status",
+				"trace":   errValide.Error(),
+			},
+		}, http.StatusBadRequest)
+		return
+	}
+	route.SlaveMonitoring.TaskResultFromSlave(statusTaskChangePayload)
 	enhancer.Response(request, writer, map[string]interface{}{
 		"status": "not implemented yet",
 	}, http.StatusNotImplemented)
@@ -170,18 +193,47 @@ func (route *RunnerRouter) createLogWork(writer http.ResponseWriter, request *ht
 
 // получение статуса работы над задачей get ?workid=:workID
 func (route *RunnerRouter) getWorkStatus(writer http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
+	taskID := vars["taskID"]
+	if taskID == "" {
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "routers",
+				"func":    "getWorkStatus",
+			},
+			"detailed": map[string]string{
+				"message": "taskID can not be empty or null",
+			},
+		}, http.StatusBadRequest)
+		return
+	}
+	taskStatus, err := route.SlaveMonitoring.GetTaskStatus(taskID)
+	if err != nil {
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "slaves",
+				"func":    "GetTaskStatus",
+			},
+			"detailed": map[string]string{
+				"message": "can not get task status",
+				"trace":   err.Error(),
+			},
+		}, http.StatusInternalServerError)
+		return
+	}
 	enhancer.Response(request, writer, map[string]interface{}{
-		"status": "not implemented yet",
-	}, http.StatusNotImplemented)
+		"status": taskStatus,
+	}, http.StatusOK)
 	return
 }
 
 // получение текущего статуса всех slave нод
 func (route *RunnerRouter) getStatusWorkers(writer http.ResponseWriter, request *http.Request) {
 	enhancer.Response(request, writer, map[string]interface{}{
-		"status": "not implemented yet",
-	}, http.StatusNotImplemented)
-	return
+		"available": route.SlaveMonitoring.SlavesAvailable,
+	}, http.StatusOK)
 }
 
 // healthcheck - статус сервиса для service discovery
@@ -208,12 +260,12 @@ func (route *RunnerRouter) notFoundHandler(writer http.ResponseWriter, request *
 /*ConfiguringRoutes - конфигурирование маршрутов
  */
 func (route *RunnerRouter) ConfiguringRoutes() {
-	route.Router.HandleFunc(apiWorkCreate, route.createNewWork).Methods(http.MethodPost)
-	route.Router.HandleFunc(apiWorkChange, route.changeWorkStatus).Methods(http.MethodPost)
-	route.Router.HandleFunc(apiWorkLogGetCreate, route.createLogWork).Methods(http.MethodPost)
-	route.Router.HandleFunc(apiWorkLogGetCreate, route.getLogWork).Methods(http.MethodGet)
-	route.Router.HandleFunc(apiWorkLogAll, route.getAllLogsTree).Methods(http.MethodGet)
-	route.Router.HandleFunc(apiWorkStatus, route.getWorkStatus).Methods(http.MethodGet)
+	route.Router.HandleFunc(apiTaskCreate, route.createNewWork).Methods(http.MethodPost)
+	route.Router.HandleFunc(apiTaskChangeOrGetStatus, route.changeWorkStatus).Methods(http.MethodPost)
+	route.Router.HandleFunc(apiTaskChangeOrGetStatus, route.getWorkStatus).Methods(http.MethodGet)
+	route.Router.HandleFunc(apiTaskLog, route.createLogWork).Methods(http.MethodPost)
+	route.Router.HandleFunc(apiTaskLog, route.getLogWork).Methods(http.MethodGet)
+	route.Router.HandleFunc(apiTaskLogAll, route.getAllLogsTree).Methods(http.MethodGet)
 	route.Router.HandleFunc(apiAvailableWorkers, route.getStatusWorkers).Methods(http.MethodGet)
 
 	route.Router.HandleFunc(apiHealthCheck, route.healthCheck).Methods(http.MethodGet)
