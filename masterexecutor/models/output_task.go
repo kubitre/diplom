@@ -3,6 +3,6 @@ package models
 type (
 	OutputTask struct {
 		Report string
-		Logs   string
+		Logs   []string // log per lines
 	}
 )
