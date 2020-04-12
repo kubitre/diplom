@@ -1,11 +1,11 @@
-checkId: 123
+taskID: 123
 
 stages:
   - lint
   - build
   - test
   
-tasks:
+jobs:
   BuildProject:
     stage: build
     image: [
@@ -31,15 +31,6 @@ tasks:
       - golangci-lint ../ > report.xml
     artefacts:
       - /report.xml
-    services:
-      - mongodb:latest:
-        - name: mongoserv
-        - ports: 12255:12255
-      - rabbitmq:latest:
-        - name: rabbit-dev
-        - ports: 
-          - 5672:5672
-          - 15672:15672
 
   TestProject:
     stage: test
