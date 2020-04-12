@@ -29,6 +29,8 @@ const (
 	apiWorkLogAll       = apiWorkLog + "/getAll"
 	apiWorkLogGetCreate = apiWorkLog + "/{workid:\\w+}/{stage:\\w+}"
 	apiWorkStatus       = apiWork + "/status"
+
+	apiHealthCheck = "/health"
 )
 
 // InitializeRunnerRouter - инициализация роутера мастер ноды
@@ -182,6 +184,27 @@ func (route *RunnerRouter) getStatusWorkers(writer http.ResponseWriter, request 
 	return
 }
 
+// healthcheck - статус сервиса для service discovery
+func (route *RunnerRouter) healthCheck(writer http.ResponseWriter, request *http.Request) {
+	// implement logic for return current running works and amount slaves
+	writer.WriteHeader(http.StatusOK)
+	writer.Write([]byte("status is running"))
+}
+
+// обработка неизвестных запросов
+func (route *RunnerRouter) notFoundHandler(writer http.ResponseWriter, request *http.Request) {
+	enhancer.Response(request, writer, map[string]interface{}{
+		"context": map[string]string{
+			"module":  "master_executor",
+			"package": "routers",
+			"func":    "notFoundHandler",
+		},
+		"detailed": map[string]string{
+			"message": "not founded handler for you request",
+		},
+	}, http.StatusNotFound)
+}
+
 /*ConfiguringRoutes - конфигурирование маршрутов
  */
 func (route *RunnerRouter) ConfiguringRoutes() {
@@ -192,6 +215,9 @@ func (route *RunnerRouter) ConfiguringRoutes() {
 	route.Router.HandleFunc(apiWorkLogAll, route.getAllLogsTree).Methods(http.MethodGet)
 	route.Router.HandleFunc(apiWorkStatus, route.getWorkStatus).Methods(http.MethodGet)
 	route.Router.HandleFunc(apiAvailableWorkers, route.getStatusWorkers).Methods(http.MethodGet)
+
+	route.Router.HandleFunc(apiHealthCheck, route.healthCheck).Methods(http.MethodGet)
+	route.Router.NotFoundHandler = http.HandlerFunc(route.notFoundHandler)
 }
 
 /*GetRouterMux - получить сконфигурированный роутер*/

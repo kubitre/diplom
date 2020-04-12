@@ -7,6 +7,9 @@ import "github.com/goreflect/gostructor"
 type ConfigurationRunner struct {
 	APIPort        int    `cf_env:"API_PORT"`
 	PathToLogsWork string `cf_env:"LOGS_WORK_PATH"`
+	ConsulAddress  string `cf_env:"CONSUL_ADDRESS"`
+	ConsulUsername string `cf_env:"CONSUL_USERNAME"`
+	ConsulPassword string `cf_env:"CONSUL_PASSWORD"`
 }
 
 /*ConfiureRunnerMaster - конфигурировании мастер ноды через Environment variables
