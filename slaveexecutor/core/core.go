@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/kubitre/diplom/slaveexecutor/config"
@@ -23,7 +25,7 @@ type (
 		WorkerPull   []chan models.TaskConfig
 		ChannelClose chan string
 		SlaveConfig  *config.SlaveConfiguration
-		Discovery *discovery.Discovery
+		Discovery    *discovery.Discovery
 	}
 	/*Worker - единичная воркер функция, которая отвечает за выполнение всех job на одной стадии одной задачи*/
 	Worker struct {
@@ -40,13 +42,27 @@ func NewCoreSlaveRunner(
 	if err != nil {
 		log.Error("can not create docker executor. " + err.Error())
 	}
-	discove := discovery.InitializeDiscovery()
+	log.Println("initialize new port")
+	port, errPort := discovery.GetAvailablePort()
+	if errPort != nil {
+		log.Println("can not initialize new port: ", errPort)
+		os.Exit(1)
+	}
+	config.SetupNewPort(port)
+	log.Println("start initialize discovery module")
+	discove := discovery.InitializeDiscovery(config)
+	if errClientConsul := discove.NewClientForConsule(); errClientConsul != nil {
+		log.Println("can not register client in consul: ", errClientConsul)
+		os.Exit(1)
+	}
+	log.Println("completed initilize discovery module")
+	discove.RegisterServiceWithConsul()
 	return &CoreSlaveRunner{
 		Git:          &gitmod.Git{},
 		Docker:       dock,
 		ChannelClose: make(chan string, 1),
 		SlaveConfig:  config,
-		Discovery: discove,
+		Discovery:    discove,
 	}, nil
 }
 
@@ -59,12 +75,13 @@ func runParallelExecutors(
 	amountParallelExecutors int,
 	chanelForClosed chan string,
 	core *CoreSlaveRunner) []chan models.TaskConfig {
+	log.Println("starting all executing workers")
 	resultChannels := make([]chan models.TaskConfig, amountParallelExecutors)
 	for i := 0; i < amountParallelExecutors; i++ {
 		resultChannels[i] = make(chan models.TaskConfig, 1)
 		go executor(i, resultChannels[i], chanelForClosed, *core)
 	}
-
+	log.Println("completed start all executing workers")
 	return resultChannels
 }
 
@@ -103,48 +120,77 @@ func (core *CoreSlaveRunner) CreatePipeline(taskConfig *models.TaskConfig) error
 	}
 	for _, stage := range taskConfig.Stages {
 		log.Info("start working on stage: " + stage)
-		core.executingJobsInStage(stage, taskConfig)
+		checked := core.executingJobsInStage(stage, taskConfig)
+		for _, check := range checked {
+			<-check
+		}
 	}
 	return nil
 }
 
-func (core *CoreSlaveRunner) executingJobsInStage(stage string, taskConfig *models.TaskConfig) {
+func (core *CoreSlaveRunner) executingJobsInStage(stage string, taskConfig *models.TaskConfig) []chan int {
+	log.Println("start executing jobs in stage: ", stage)
 	currentJobs := core.getJobsByStage(stage, taskConfig.Jobs, taskConfig.TaskID)
-	for _, job := range currentJobs {
+	jobsChecked := make([]chan int, len(currentJobs))
+	for indexJob, job := range currentJobs {
+		jobsChecked[indexJob] = make(chan int, 1)
 		log.Info("current tasks for stage: ", stage, "; job: ", job)
 		jobResult := make(chan int, 1)
 		go executingParallelJobPerStage(job, core, jobResult)
-		go checkJobResult(jobResult, core)
+		go checkJobResult(jobResult, job, core, jobsChecked[indexJob])
 	}
-
+	return jobsChecked
 }
 
-func checkJobResult(jobResult chan int, core *CoreSlaveRunner) {
-	result := <- jobResult
-	http.NewRequest(http.MethodPost, "http://" + core.)
+func checkJobResult(jobResult chan int, job models.Job, core *CoreSlaveRunner, jobChecked chan int) {
+	log.Println("start checking result work for job: ", job.JobName)
+	<-jobResult
+	allServices := core.Discovery.GetService("master-executor", "master")
+	address := allServices[0].Address + ":" + strconv.Itoa(allServices[0].ServicePort)
+	// add Job output
+	request, err := http.NewRequest(http.MethodPost, "http://"+address+"/task/"+job.TaskID+"/log/"+job.Stage+"/"+job.JobName, nil)
+	if err != nil {
+		log.Error("can not execute request", err)
+	}
+	resp, err := http.DefaultClient.Do(request)
+	if err != nil {
+		log.Error("error while requesting to master", err)
+		jobChecked <- 1
+		return
+	}
+	log.Debug("response from master: ", resp)
+	jobChecked <- 1
 }
 
 func executingParallelJobPerStage(job models.Job, core *CoreSlaveRunner, jobResult chan int) {
+	log.Println("start preparing job: ", job.JobName)
 	if err := core.prepareTask(job); err != nil {
 		log.Error("error while preparing task. ", err)
 	}
+	log.Println("start creating container for job: ", job.JobName)
+	containername := strings.ToLower(job.TaskID + "_" + job.JobName)
+	core.Docker.RemoveContainer("execute_" + containername)
 	containerID, err := core.Docker.CreateContainer(&models.ContainerCreatePayload{
-		BaseImageName: job.TaskID + "_" + job.JobName,
-		ContainerName: "execute_" + job.TaskID + "_" + job.JobName,
+		BaseImageName: containername,
+		ContainerName: "execute_" + containername,
 	})
+	log.Println("running container for job")
 	responseCloser, err := core.Docker.RunContainer(containerID)
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
 	_, err = stdcopy.StdCopy(stdout, stderr, responseCloser)
+	// ADD PARSING STDOUT and STDERR
 	log.Info("STDOUT: ", string(stdout.Bytes()))
 	log.Info("STDERROR: ", string(stderr.Bytes()))
 	defer responseCloser.Close()
 	if err != nil {
 		jobResult <- -1
 	}
+	jobResult <- 1
 }
 
 func (core *CoreSlaveRunner) getRepoCandidate(job models.Job) (string, error) {
+	log.Println("start cloning repository candidate")
 	path, err := core.Git.CloneRepo(job.RepositoryCandidate)
 	if err != nil {
 		switch core.Git.GetTypeError(err) {
@@ -164,10 +210,12 @@ func (core *CoreSlaveRunner) prepareTask(job models.Job) error {
 	if err != nil {
 		return err
 	}
-
+	log.Println("creating image for job: ", job.JobName)
+	log.Println("path repo: ", pathRepo)
+	log.Println("name of docker image: ", job.TaskID+"_"+job.JobName)
 	if err := core.Docker.CreateImageMem(core.appendRepoIntoDocker(pathRepo, job),
 		job.ShellCommands,
-		[]string{job.TaskID + "_" + job.JobName},
+		[]string{strings.ToLower(job.TaskID + "_" + job.JobName)},
 		map[string]string{}); err != nil {
 		return err
 	}
@@ -184,6 +232,7 @@ func (core *CoreSlaveRunner) appendRepoIntoDocker(path string, job models.Job) [
 /*getJobsByStage - получение всех исполняемых job на stage */
 func (core *CoreSlaveRunner) getJobsByStage(stage string, jobs map[string]models.Job, taskID string) []models.Job {
 	result := []models.Job{}
+	log.Println("getting all jobs for stage: ", stage)
 	for jobID, job := range jobs {
 		log.Info("current task id: ", jobID)
 		enhanceJob := models.Job{
@@ -198,5 +247,6 @@ func (core *CoreSlaveRunner) getJobsByStage(stage string, jobs map[string]models
 			result = append(result, enhanceJob)
 		}
 	}
+	log.Println("jobs per stage: ", result)
 	return result
 }

@@ -86,7 +86,7 @@ func (docker *DockerExecutor) CreateContainer(payload *models.ContainerCreatePay
 	}, nil, payload.ContainerName)
 	if err != nil {
 		log.Error("can not create container with default configuration. Error: ", err.Error())
-		return "", docker.removeContainer(payload.ContainerName)
+		return "", docker.RemoveContainer(payload.ContainerName)
 	}
 	log.Info("success create container. Output oprts: ", repsCreating)
 	return repsCreating.ID, nil
@@ -282,7 +282,7 @@ func (docker *DockerExecutor) prepareExecutingScript(shell []string) error {
 		return err
 	}
 
-	if err := ioutil.WriteFile("./"+buildContextPath+"/" +entryScript, result, 0777); err != nil {
+	if err := ioutil.WriteFile("./"+buildContextPath+"/"+entryScript, result, 0777); err != nil {
 		return err
 	}
 	return nil
@@ -443,7 +443,7 @@ func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, n
 // 	return nil
 // }
 
-func (docker *DockerExecutor) removeContainer(containerName string) error {
+func (docker *DockerExecutor) RemoveContainer(containerName string) error {
 	ctx := context.Background()
 	if err := docker.DockerClient.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{}); err != nil {
 		log.Error("can not remove container. " + err.Error())

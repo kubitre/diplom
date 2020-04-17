@@ -22,7 +22,7 @@ func TestMarshaling(t *testing.T) {
 					"FROM golang:1.14.2-alpine3.11 as builder",
 				},
 				ShellCommands: []string{
-					"go build ",
+					"cd repoCandidate ",
 					"./service",
 				},
 				RepositoryCandidate: "https://github.com/kubitre/for_diplom",

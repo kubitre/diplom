@@ -5,7 +5,7 @@ import "github.com/goreflect/gostructor"
 /*SlaveConfiguration - конфигурация слейв ноды
  */
 type SlaveConfiguration struct {
-	APIPort                    int    `cf_env:"SLAVE_API_PORT"`
+	API_PORT                   int    `cf_env:"API_PORT"`
 	ConsulAddress              string `cf_env:"CONSUL_ADDRESS"`
 	ConsulUsername             string `cf_env:"CONSUL_USERNAME"`
 	ConsulPassword             string `cf_env:"CONSUL_PASSWORD"`
@@ -21,4 +21,8 @@ func ConfiguringService() (*SlaveConfiguration, error) {
 		return nil, errConfigure
 	}
 	return config.(*SlaveConfiguration), nil
+}
+
+func (config *SlaveConfiguration) SetupNewPort(port int) {
+	config.API_PORT = port
 }
