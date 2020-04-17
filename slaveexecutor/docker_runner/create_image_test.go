@@ -30,10 +30,13 @@ func Test_CreateImageDockerByMemfile(t *testing.T) {
 		t.Error(err)
 	}
 	if err := dockerExecutor.CreateImageMem([]string{
-		"FROM ubuntu:18.04",
-		"RUN apt update",
+		"FROM golang:1.14.2-alpine3.11",
+		"RUN apk update && apk add bash",
+		"{{repoCandidate}}",
+		"{{workdir repoCandidate}}",
+		"RUN go build -o service",
 	}, []string{
-		`echo "hello world"`,
+		`./service`,
 	}, []string{"test_candidate_2"}, map[string]string{
 		repoPath: "repoCandidate",
 	}); err != nil {

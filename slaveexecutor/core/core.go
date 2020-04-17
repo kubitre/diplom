@@ -3,10 +3,12 @@ package core
 import (
 	"bytes"
 	"errors"
+	"net/http"
 	"os"
 
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/kubitre/diplom/slaveexecutor/config"
+	"github.com/kubitre/diplom/slaveexecutor/discovery"
 	"github.com/kubitre/diplom/slaveexecutor/docker_runner"
 	"github.com/kubitre/diplom/slaveexecutor/gitmod"
 	"github.com/kubitre/diplom/slaveexecutor/models"
@@ -21,6 +23,7 @@ type (
 		WorkerPull   []chan models.TaskConfig
 		ChannelClose chan string
 		SlaveConfig  *config.SlaveConfiguration
+		Discovery *discovery.Discovery
 	}
 	/*Worker - единичная воркер функция, которая отвечает за выполнение всех job на одной стадии одной задачи*/
 	Worker struct {
@@ -37,11 +40,13 @@ func NewCoreSlaveRunner(
 	if err != nil {
 		log.Error("can not create docker executor. " + err.Error())
 	}
+	discove := discovery.InitializeDiscovery()
 	return &CoreSlaveRunner{
 		Git:          &gitmod.Git{},
 		Docker:       dock,
 		ChannelClose: make(chan string, 1),
 		SlaveConfig:  config,
+		Discovery: discove,
 	}, nil
 }
 
@@ -105,11 +110,18 @@ func (core *CoreSlaveRunner) CreatePipeline(taskConfig *models.TaskConfig) error
 
 func (core *CoreSlaveRunner) executingJobsInStage(stage string, taskConfig *models.TaskConfig) {
 	currentJobs := core.getJobsByStage(stage, taskConfig.Jobs, taskConfig.TaskID)
-	jobResult := make(chan int, core.SlaveConfig.AmountParallelTaskPerStage)
 	for _, job := range currentJobs {
 		log.Info("current tasks for stage: ", stage, "; job: ", job)
+		jobResult := make(chan int, 1)
 		go executingParallelJobPerStage(job, core, jobResult)
+		go checkJobResult(jobResult, core)
 	}
+
+}
+
+func checkJobResult(jobResult chan int, core *CoreSlaveRunner) {
+	result := <- jobResult
+	http.NewRequest(http.MethodPost, "http://" + core.)
 }
 
 func executingParallelJobPerStage(job models.Job, core *CoreSlaveRunner, jobResult chan int) {

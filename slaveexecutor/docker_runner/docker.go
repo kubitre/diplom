@@ -36,7 +36,7 @@ type (
 const (
 	buildContextPath  = "dockerBuildContext"
 	dockerFileMemName = "Dockerfile"
-	entryScript       = "/entry.bash"
+	entryScript       = "entry.bash"
 )
 
 // NewDockerExecutor - создание нового докер исполнителя
@@ -160,8 +160,8 @@ func (docker *DockerExecutor) getFinalNamePath(path string) (string, error) {
 func (docker *DockerExecutor) PrepareDockerEnv(neededPath map[string]string, dockerFile, shell []string) error {
 	fromDockerfile := neededPath
 	dockerFile = docker.getPathNeededToCopyInContext(dockerFile, &fromDockerfile)
-
-	dockerF2, err := docker.preparingContext(fromDockerfile, dockerFile, false)
+	log.Println("DockerFile: ", dockerFile)
+	dockerF2, err := docker.preparingContext(fromDockerfile, dockerFile, true)
 	if err != nil {
 		log.Error("can not preparing context from neededpath: ", err)
 		return err
@@ -171,7 +171,7 @@ func (docker *DockerExecutor) PrepareDockerEnv(neededPath map[string]string, doc
 		return err
 	}
 
-	dockerF2 = append(dockerF2, "COPY "+buildContextPath+entryScript+" .")
+	dockerF2 = append(dockerF2, "COPY "+buildContextPath+"/"+entryScript+" .")
 	dockerF2 = append(dockerF2, "ENTRYPOINT [ \"bash\", \""+entryScript+"\" ]")
 	log.Info("result dockerfile: ", dockerF2)
 
@@ -185,7 +185,9 @@ func (docker *DockerExecutor) PrepareDockerEnv(neededPath map[string]string, doc
 func (docker *DockerExecutor) preparingContext(neededPath map[string]string, dockerFile []string, fromDockerfile bool) ([]string, error) {
 	dockerf := dockerFile
 	for key, val := range neededPath {
+		log.Println("key: ", key, " value: ", val)
 		lastPart, err := docker.getFinalNamePath(key)
+		log.Println(lastPart)
 		if err != nil {
 			log.Error("can not copy value. ", err)
 		}
@@ -193,10 +195,23 @@ func (docker *DockerExecutor) preparingContext(neededPath map[string]string, doc
 			return nil, err
 		}
 		if fromDockerfile {
-			dockerf = append(dockerf, "COPY "+buildContextPath+"/"+lastPart+" "+val)
+			dockerf = docker.findAnnotationRepoCandidate(dockerf, "COPY "+buildContextPath+"/"+lastPart+" "+val)
 		}
 	}
+	log.Println("DOCKERFILE: ", dockerf)
 	return dockerf, nil
+}
+
+func (docker *DockerExecutor) findAnnotationRepoCandidate(dockerFile []string, repoCandidate string) []string {
+	for index, value := range dockerFile {
+		switch value {
+		case "{{repoCandidate}}":
+			dockerFile[index] = repoCandidate
+		case "{{workdir repoCandidate}}":
+			dockerFile[index] = "WORKDIR repoCandidate"
+		}
+	}
+	return dockerFile
 }
 
 func (docker *DockerExecutor) writeDockerfile(filePath string, data []byte) error {
@@ -211,6 +226,7 @@ func (docker *DockerExecutor) writeDockerfile(filePath string, data []byte) erro
 func (docker *DockerExecutor) copyDir(src string, dst string) (err error) {
 	src = filepath.Clean(src)
 	dst = filepath.Clean(dst)
+	log.Println("copy from source: ", src, " to destination: ", dst)
 
 	si, err := os.Stat(src)
 	if err != nil {
@@ -266,7 +282,7 @@ func (docker *DockerExecutor) prepareExecutingScript(shell []string) error {
 		return err
 	}
 
-	if err := ioutil.WriteFile("./"+buildContextPath+entryScript, result, 0777); err != nil {
+	if err := ioutil.WriteFile("./"+buildContextPath+"/" +entryScript, result, 0777); err != nil {
 		return err
 	}
 	return nil

@@ -15,7 +15,8 @@ type SlaveRouter struct {
 }
 
 const (
-	apiTask = "/task"
+	apiTask        = "/task"
+	apiHealthCheck = "/health"
 )
 
 func InitNewSlaveRouter() *SlaveRouter {
@@ -38,9 +39,14 @@ func (route *SlaveRouter) createNewTask(writer http.ResponseWriter, request *htt
 	writer.WriteHeader(http.StatusOK)
 }
 
+func (route *SlaveRouter) healthCheck(writer http.ResponseWriter, request *http.Request) {
+	writer.WriteHeader(http.StatusOK)
+}
+
 // ConfigureRouter - конфигурирование роутера
 func (route *SlaveRouter) ConfigureRouter() {
 	route.Router.HandleFunc(apiTask, route.createNewTask).Methods(http.MethodPost)
+	route.Router.HandleFunc(apiHealthCheck, route.healthCheck).Methods(http.MethodGet)
 }
 
 // GetRouter - получение слейв роутера
