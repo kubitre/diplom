@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"log"
 	"mime"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/kubitre/diplom/masterexecutor/config"
 	"github.com/kubitre/diplom/masterexecutor/enhancer"
+	"github.com/kubitre/diplom/masterexecutor/models"
 	"github.com/kubitre/diplom/masterexecutor/payloads"
 	"github.com/kubitre/diplom/masterexecutor/slaves"
 )
@@ -157,7 +159,7 @@ func (route *RunnerRouter) getLogTask(writer http.ResponseWriter, request *http.
 	log.Println("taskID: "+taskID+"stage name: "+stage, " job: ", job)
 	files := taskID
 	if stage != "" {
-		files += "_" + stage + "/" + job + ".log"
+		files += "/stage/" + stage + "/jobs/" + job + ".log"
 	}
 	writer.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext("logs/"+files)))
 	log.Println("start serving log: " + route.Config.PathToLogsWork + "/" + files)
@@ -178,13 +180,29 @@ func (route *RunnerRouter) getAllLogsTree(writer http.ResponseWriter, request *h
 // создание логов с выполненной работы post {taskID, stage, logcontent}
 func (route *RunnerRouter) createLogTask(writer http.ResponseWriter, request *http.Request) {
 	log.Println("start creating new log: ")
+	var model models.OutputTask
+	if err := json.NewDecoder(request.Body).Decode(&model); err != nil {
+		log.Println("can not parsed body: ", err)
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "routers",
+				"func":    "createLogWork",
+			},
+			"detailed": map[string]string{
+				"message": "can't parse body",
+				"trace":   err.Error(),
+			},
+		}, http.StatusBadRequest)
+		return
+	}
 	vars := mux.Vars(request)
 	taskID := vars["taskID"]
 	stage := vars["stage"]
 	job := vars["job"]
 	log.Println("LOGTASKCONFIG: ", route.Config)
 	log.Println("create log for: path: "+route.Config.PathToLogsWork, taskID+" stage: ", stage, " job: ", job)
-	errDirCreating := os.MkdirAll(route.Config.PathToLogsWork+"/"+taskID+"/stage/"+stage+"/jobs/"+job, os.ModePerm)
+	errDirCreating := os.MkdirAll(route.Config.PathToLogsWork+"/"+taskID+"/stage/"+stage+"/jobs", os.ModePerm)
 	if errDirCreating != nil {
 		log.Println("can not be creating dir for log", errDirCreating)
 		enhancer.Response(request, writer, map[string]interface{}{
@@ -216,6 +234,10 @@ func (route *RunnerRouter) createLogTask(writer http.ResponseWriter, request *ht
 		}, http.StatusBadRequest)
 		return
 	}
+	marsh, _ := json.Marshal(&model)
+
+	// write data to job, append data to stage
+	ioutil.WriteFile(route.Config.PathToLogsWork+"/"+taskID+"/stage/"+stage+"/jobs/"+job+".log", marsh, 0644)
 
 	enhancer.Response(request, writer, map[string]interface{}{
 		"status": "completed create log task by taskID and stage name",

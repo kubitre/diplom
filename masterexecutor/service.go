@@ -15,9 +15,13 @@ import (
 func handlingGracefullShutdown(sig chan os.Signal, runCore *core.RunnerCore) {
 	for {
 		sg := <-sig
-		if sg != syscall.SIGTERM || sg != syscall.SIGINT {
+		switch sg {
+		case syscall.SIGINT, syscall.SIGTERM:
+			break
+		default:
 			continue
 		}
+
 		log.Println("init kill: ", sg)
 		signal.Reset(sg)
 		break
