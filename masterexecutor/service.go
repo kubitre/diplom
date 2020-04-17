@@ -6,14 +6,25 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"syscall"
 
 	"github.com/kubitre/diplom/masterexecutor/config"
 	"github.com/kubitre/diplom/masterexecutor/core"
 )
 
 func handlingGracefullShutdown(sig chan os.Signal, runCore *core.RunnerCore) {
-	sg := <-sig
-	log.Println("gracefull shutdown by :", sg)
+	for {
+		sg := <-sig
+		if sg != syscall.SIGTERM || sg != syscall.SIGINT {
+			continue
+		}
+		log.Println("init kill: ", sg)
+		signal.Reset(sg)
+		break
+	}
+
+	log.Println("gracefull shutdown")
+
 	runCore.UnregisterService()
 	os.Exit(0)
 }
@@ -25,6 +36,7 @@ func main() {
 	if err != nil {
 		log.Panic("can not configuring service by config: ", err)
 	}
+	log.Println("Configuration for current service: ", config)
 	runnerCore, err := core.InitNewCore(config)
 	if err != nil {
 		log.Panic("can not initialize core: ", err)

@@ -25,7 +25,7 @@ func InitNewCore(config *config.ConfigurationRunner) (*RunnerCore, error) {
 	}
 	return &RunnerCore{
 		SlaveMoniring: slaveMonitor,
-		RouterRunner:  routes.InitializeRunnerRouter(slaveMonitor),
+		RouterRunner:  routes.InitializeRunnerRouter(slaveMonitor, config),
 		Discovery:     discovery.InitializeDiscovery(config),
 	}, nil
 }
