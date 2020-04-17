@@ -2,7 +2,9 @@ package core
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -135,34 +137,36 @@ func (core *CoreSlaveRunner) executingJobsInStage(stage string, taskConfig *mode
 	for indexJob, job := range currentJobs {
 		jobsChecked[indexJob] = make(chan int, 1)
 		log.Info("current tasks for stage: ", stage, "; job: ", job)
-		jobResult := make(chan int, 1)
+		jobResult := make(chan models.OutputTask, 1)
 		go executingParallelJobPerStage(job, core, jobResult)
 		go checkJobResult(jobResult, job, core, jobsChecked[indexJob])
 	}
 	return jobsChecked
 }
 
-func checkJobResult(jobResult chan int, job models.Job, core *CoreSlaveRunner, jobChecked chan int) {
+func checkJobResult(jobResult chan models.OutputTask, job models.Job, core *CoreSlaveRunner, jobChecked chan int) {
 	log.Println("start checking result work for job: ", job.JobName)
-	<-jobResult
+	result := <-jobResult
 	allServices := core.Discovery.GetService("master-executor", "master")
 	address := allServices[0].Address + ":" + strconv.Itoa(allServices[0].ServicePort)
 	// add Job output
-	request, err := http.NewRequest(http.MethodPost, "http://"+address+"/task/"+job.TaskID+"/log/"+job.Stage+"/"+job.JobName, nil)
-	if err != nil {
-		log.Error("can not execute request", err)
-	}
-	resp, err := http.DefaultClient.Do(request)
-	if err != nil {
-		log.Error("error while requesting to master", err)
+	resultMarshal, errMarshal := json.Marshal(&result)
+	if errMarshal != nil {
+		log.Println("can not marshaled response: ", errMarshal)
 		jobChecked <- 1
 		return
+	}
+	r := bytes.NewReader(resultMarshal)
+	resp, err := http.Post("http://"+address+"/task/"+job.TaskID+"/log/"+job.Stage+"/"+job.JobName, "application/json", r)
+	if err != nil {
+		log.Error("can not execute request", err)
+		jobChecked <- -1
 	}
 	log.Debug("response from master: ", resp)
 	jobChecked <- 1
 }
 
-func executingParallelJobPerStage(job models.Job, core *CoreSlaveRunner, jobResult chan int) {
+func executingParallelJobPerStage(job models.Job, core *CoreSlaveRunner, jobResult chan models.OutputTask) {
 	log.Println("start preparing job: ", job.JobName)
 	if err := core.prepareTask(job); err != nil {
 		log.Error("error while preparing task. ", err)
@@ -176,17 +180,36 @@ func executingParallelJobPerStage(job models.Job, core *CoreSlaveRunner, jobResu
 	})
 	log.Println("running container for job")
 	responseCloser, err := core.Docker.RunContainer(containerID)
+	log.Println("error while starting container: ", err)
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
 	_, err = stdcopy.StdCopy(stdout, stderr, responseCloser)
 	// ADD PARSING STDOUT and STDERR
-	log.Info("STDOUT: ", string(stdout.Bytes()))
-	log.Info("STDERROR: ", string(stderr.Bytes()))
+	output := models.OutputTask{}
+	for {
+		line, err := stdout.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+		}
+		output.STDOUT = append(output.STDOUT, line)
+	}
+	for {
+		line, err := stderr.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+		}
+		output.STDERR = append(output.STDERR, line)
+	}
+	log.Println("output: ", output)
 	defer responseCloser.Close()
 	if err != nil {
-		jobResult <- -1
+		jobResult <- models.OutputTask{}
 	}
-	jobResult <- 1
+	jobResult <- output
 }
 
 func (core *CoreSlaveRunner) getRepoCandidate(job models.Job) (string, error) {

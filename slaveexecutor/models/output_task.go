@@ -2,7 +2,7 @@ package models
 
 type (
 	OutputTask struct {
-		Report string
-		Logs   string
+		STDOUT []string
+		STDERR []string
 	}
 )
