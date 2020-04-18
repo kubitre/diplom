@@ -1,6 +1,7 @@
 package core
 
 import (
+	"log"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -23,6 +24,7 @@ func InitNewCore(config *config.ConfigurationRunner) (*RunnerCore, error) {
 	if err != nil {
 		return nil, err
 	}
+	slaveMonitor.LastUsingService <- slaves.INIT_USED_SLAVE
 	return &RunnerCore{
 		SlaveMoniring: slaveMonitor,
 		RouterRunner:  routes.InitializeRunnerRouter(slaveMonitor, config),
@@ -35,14 +37,17 @@ func (core *RunnerCore) Run(config *config.ConfigurationRunner) {
 	core.Discovery.NewClientForConsule()
 	core.Discovery.RegisterServiceWithConsul()
 	core.RouterRunner.ConfiguringRoutes()
+	go core.checkerNewSlave()
 
 }
 
 func (core *RunnerCore) checkerNewSlave() {
 	for {
+		log.Println("start finding slaves")
 		foundedSlaves := core.Discovery.CheckNewSlaves()
+		log.Println("founded services: ", foundedSlaves)
 		core.SlaveMoniring.CompareAndSave(foundedSlaves)
-		time.Sleep(time.Minute * 2)
+		time.Sleep(time.Second * 15)
 	}
 }
 

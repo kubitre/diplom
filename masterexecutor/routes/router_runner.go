@@ -31,8 +31,12 @@ const (
 	apiTask                  = "/task"
 	apiTaskCreate            = apiTask + "/create"
 	apiTaskChangeOrGetStatus = apiTask + "/{taskID:\\w+}/status"
-	apiTaskLog               = apiTask + "/{taskID:\\w+}/log/{stage:\\w+}/{job:\\w+}"
-	apiTaskLogAll            = apiTask + "/getlogs"
+	apiTaskReport            = apiTask + "/{taskID:\\w+}/report/{stage:\\w++}/{job:\\w+}"
+	apiTaskLogJob            = apiTask + "/{taskID:\\w+}/log/{stage:\\w+}/{job:\\w+}"
+	apiTaskLogStage          = apiTask + "/{taskID:\\w+}/log/{stage:\\w+}"
+	apiTaskLogTask           = apiTask + "/{taskID:\\w+}/log"
+
+	apiTaskLogAll = apiTask + "/getlogs"
 
 	apiHealthCheck = "/health"
 )
@@ -52,7 +56,7 @@ func initialRoutesSetup(router *mux.Router) *mux.Router {
 
 // createNewTask - создание новой задачи на обработку репозитория кандидата post {workID, work by spec}
 func (route *RunnerRouter) createNewTask(writer http.ResponseWriter, request *http.Request) {
-	var createNewTaskPayload payloads.CreateNewWork
+	var createNewTaskPayload payloads.CreateNewTask
 	defer request.Body.Close()
 	if err := json.NewDecoder(request.Body).Decode(&createNewTaskPayload); err != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
@@ -69,7 +73,7 @@ func (route *RunnerRouter) createNewTask(writer http.ResponseWriter, request *ht
 		return
 	}
 
-	if errRedirect := route.SlaveMonitoring.SendSlaveTask(request, writer); errRedirect != nil {
+	if errRedirect := route.SlaveMonitoring.SendSlaveTask(request, writer, createNewTaskPayload); errRedirect != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
 			"context": map[string]string{
 				"module":  "master_executor",
@@ -157,13 +161,25 @@ func (route *RunnerRouter) getLogTask(writer http.ResponseWriter, request *http.
 	stage := vars["stage"]
 	job := vars["job"]
 	log.Println("taskID: "+taskID+"stage name: "+stage, " job: ", job)
-	files := taskID
-	if stage != "" {
-		files += "/stage/" + stage + "/jobs/" + job + ".log"
+	resultFile, errPreparing := enhancer.Mergelog(route.Config.PathToLogsWork, taskID, stage, job)
+	if errPreparing != nil {
+		log.Println("can not preparing log: ", errPreparing)
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "routers",
+				"func":    "getLogTask",
+			},
+			"detailed": map[string]string{
+				"message": "can not be merged logs",
+				"trace":   errPreparing.Error(),
+			},
+		}, http.StatusBadRequest)
+		return
 	}
-	writer.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext("logs/"+files)))
-	log.Println("start serving log: " + route.Config.PathToLogsWork + "/" + files)
-	http.ServeFile(writer, request, route.Config.PathToLogsWork+"/"+files)
+	writer.Header().Set("Content-Type", mime.TypeByExtension(resultFile))
+	log.Println("start serving log: " + resultFile)
+	http.ServeFile(writer, request, resultFile)
 	return
 }
 
@@ -179,7 +195,7 @@ func (route *RunnerRouter) getAllLogsTree(writer http.ResponseWriter, request *h
 
 // создание логов с выполненной работы post {taskID, stage, logcontent}
 func (route *RunnerRouter) createLogTask(writer http.ResponseWriter, request *http.Request) {
-	log.Println("start creating new log: ")
+	log.Println("start creating new log")
 	var model models.OutputTask
 	if err := json.NewDecoder(request.Body).Decode(&model); err != nil {
 		log.Println("can not parsed body: ", err)
@@ -200,11 +216,11 @@ func (route *RunnerRouter) createLogTask(writer http.ResponseWriter, request *ht
 	taskID := vars["taskID"]
 	stage := vars["stage"]
 	job := vars["job"]
-	log.Println("LOGTASKCONFIG: ", route.Config)
-	log.Println("create log for: path: "+route.Config.PathToLogsWork, taskID+" stage: ", stage, " job: ", job)
-	errDirCreating := os.MkdirAll(route.Config.PathToLogsWork+"/"+taskID+"/stage/"+stage+"/jobs", os.ModePerm)
+	logPath := route.Config.PathToLogsWork + "/" + taskID + "/" + stage
+	log.Println("create log path: ", logPath)
+	errDirCreating := os.MkdirAll(logPath, os.ModePerm)
 	if errDirCreating != nil {
-		log.Println("can not be creating dir for log", errDirCreating)
+		log.Println("can not be creating dir for log: ", errDirCreating)
 		enhancer.Response(request, writer, map[string]interface{}{
 			"context": map[string]string{
 				"module":  "master_executor",
@@ -218,7 +234,7 @@ func (route *RunnerRouter) createLogTask(writer http.ResponseWriter, request *ht
 		}, http.StatusBadRequest)
 		return
 	}
-	_, err := os.Create(route.Config.PathToLogsWork + "/" + taskID + "/stage/" + stage + "/jobs/" + job + ".log")
+	_, err := os.Create(logPath + "/" + job + ".log")
 	if err != nil {
 		log.Println("can not create log file: ", err)
 		enhancer.Response(request, writer, map[string]interface{}{
@@ -237,7 +253,7 @@ func (route *RunnerRouter) createLogTask(writer http.ResponseWriter, request *ht
 	marsh, _ := json.Marshal(&model)
 
 	// write data to job, append data to stage
-	ioutil.WriteFile(route.Config.PathToLogsWork+"/"+taskID+"/stage/"+stage+"/jobs/"+job+".log", marsh, 0644)
+	ioutil.WriteFile(logPath+"/"+job+".log", marsh, 0644)
 
 	enhancer.Response(request, writer, map[string]interface{}{
 		"status": "completed create log task by taskID and stage name",
@@ -317,8 +333,10 @@ func (route *RunnerRouter) ConfiguringRoutes() {
 	route.Router.HandleFunc(apiTaskCreate, route.createNewTask).Methods(http.MethodPost)
 	route.Router.HandleFunc(apiTaskChangeOrGetStatus, route.changeTaskStatus).Methods(http.MethodPost)
 	route.Router.HandleFunc(apiTaskChangeOrGetStatus, route.getTaskStatus).Methods(http.MethodGet)
-	route.Router.HandleFunc(apiTaskLog, route.createLogTask).Methods(http.MethodPost)
-	route.Router.HandleFunc(apiTaskLog, route.getLogTask).Methods(http.MethodGet)
+	route.Router.HandleFunc(apiTaskLogJob, route.createLogTask).Methods(http.MethodPost)
+	route.Router.HandleFunc(apiTaskLogJob, route.getLogTask).Methods(http.MethodGet)
+	route.Router.HandleFunc(apiTaskLogStage, route.getLogTask).Methods(http.MethodGet)
+	route.Router.HandleFunc(apiTaskLogTask, route.getLogTask).Methods(http.MethodGet)
 	route.Router.HandleFunc(apiTaskLogAll, route.getAllLogsTree).Methods(http.MethodGet)
 	route.Router.HandleFunc(apiAvailableWorkers, route.getStatusWorkers).Methods(http.MethodGet)
 

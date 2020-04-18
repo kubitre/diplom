@@ -1,12 +1,13 @@
 package slaves
 
 import (
+	"bytes"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/gorilla/mux"
 	consulapi "github.com/hashicorp/consul/api"
 	"github.com/kubitre/diplom/masterexecutor/payloads"
 )
@@ -54,6 +55,10 @@ const (
 )
 
 const (
+	INIT_USED_SLAVE = -1
+)
+
+const (
 	// WAITING_WORK - Slave сервис ожидает работы
 	WAITING_WORK SlaveStatus = iota
 	// SLAVE_WORKING - Slave сервис в данный момент выполняет задание
@@ -75,23 +80,27 @@ func InitializeNewSlaveMonitoring(maxTaskPerSlave int) (*SlaveMonitoring, error)
 func (slavemonitor *SlaveMonitoring) CompareAndSave(foundedServices []*consulapi.CatalogService) {
 	for _, value := range foundedServices {
 		if slavemonitor.notExistService(value) {
+			log.Println("new service not exist in this master executor")
 			slavemonitor.SlavesAvailable = append(slavemonitor.SlavesAvailable, Slave{
-				ID:                  value.ID,
+				ID:                  value.ServiceID,
 				Address:             value.Address,
 				Port:                value.ServicePort,
 				CurrentStatus:       WAITING_WORK,
 				CurrentExecuteTasks: []int{},
 			})
+			return
 		}
 	}
 }
 
 func (slavemonitor *SlaveMonitoring) notExistService(service *consulapi.CatalogService) bool {
 	for _, slave := range slavemonitor.SlavesAvailable {
-		if slave.ID == service.ID {
+		if slave.ID == service.ServiceID {
+			log.Println("service already exist by slave id: ", slave.ID)
 			return false
 		}
 	}
+	log.Println("service does not exist: ", service.ID)
 	return true
 }
 
@@ -100,18 +109,25 @@ func (slavemonitor *SlaveMonitoring) changeLastUsingServiceIndex(newindex int) {
 }
 
 // SendSlaveTask - проксирование запроса от клиента на один из слейв сервисов
-func (slavemonitor *SlaveMonitoring) SendSlaveTask(request *http.Request, writer http.ResponseWriter) error {
-	vars := mux.Vars(request)
-	taskID := vars["taskid"]
-	if taskID == "" {
+func (slavemonitor *SlaveMonitoring) SendSlaveTask(request *http.Request, writer http.ResponseWriter, newTask payloads.CreateNewTask) error {
+	if newTask.TaskID == "" {
 		return errors.New("value of taskID can not be null or empty")
 	}
+	log.Println("start chosing slave executor")
 	slaveID, err := slavemonitor.chooseHaveSpaceForWorkSlave()
 	if err != nil {
 		return err
 	}
-	slavemonitor.addNewTask(taskID, slaveID)
-	http.Redirect(writer, request, "http://"+slavemonitor.SlavesAvailable[slaveID].Address+":"+strconv.Itoa(slavemonitor.SlavesAvailable[slaveID].Port), http.StatusUseProxy)
+	body, err := newTask.ConvertToTaskConfigBytes()
+	if err != nil {
+		return err
+	}
+	rbody := bytes.NewReader(body)
+	log.Println("choosed slave: ", slaveID)
+	slavemonitor.addNewTask(newTask.TaskID, slaveID)
+	addressSlave := "http://" + slavemonitor.SlavesAvailable[slaveID].Address + ":" + strconv.Itoa(slavemonitor.SlavesAvailable[slaveID].Port)
+	log.Println("starting redirect to : ", addressSlave)
+	http.Post(addressSlave+"/task", "application/json", rbody)
 	return nil
 }
 
@@ -132,20 +148,18 @@ func (slavemonitor *SlaveMonitoring) TaskResultFromSlave(payload payloads.Change
 func (slavemonitor *SlaveMonitoring) chooseHaveSpaceForWorkSlave() (int, error) {
 	currentUseSlaveIndex := 0
 	lastUsedIndex := <-slavemonitor.LastUsingService
-	if len(slavemonitor.SlavesAvailable)-1 > lastUsedIndex {
-		currentUseSlaveIndex = lastUsedIndex + 1
-		if len(slavemonitor.SlavesAvailable[currentUseSlaveIndex].CurrentExecuteTasks) < slavemonitor.MaxExecutingTaskPerSlave {
+	if lastUsedIndex == -1 {
+		if len(slavemonitor.SlavesAvailable) > 0 {
 			slavemonitor.changeLastUsingServiceIndex(currentUseSlaveIndex)
 			return currentUseSlaveIndex, nil
 		}
-		for index, slave := range slavemonitor.SlavesAvailable {
-			if len(slave.CurrentExecuteTasks) < slavemonitor.MaxExecutingTaskPerSlave {
-				slavemonitor.changeLastUsingServiceIndex(index)
-				return index, nil
-			}
-		}
+		return INIT_USED_SLAVE, errors.New("not installed slaves executors")
 	}
-	return 0, errors.New("can not choose worker slave for executing this task")
+	return slavemonitor.roundRobin()
+}
+
+func (slavemonitor *SlaveMonitoring) roundRobin() (int, error) {
+	return 0, nil
 }
 
 func (slavemonitor *SlaveMonitoring) updateOneOfSlave(index int, status SlaveStatus, currentExecutingTask int) {

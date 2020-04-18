@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	slavePattern = "slave-executor#"
-	tagSlave     = "executor"
+	slavePattern = "slave-executor"
+	tagSlave     = "slave"
 )
 
 type Discovery struct {
