@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -13,7 +14,7 @@ import (
 
 const (
 	slavePattern = "slave-executor#"
-	tagSlave     = "executor"
+	tagSlave     = "slave"
 )
 
 type Discovery struct {
@@ -62,10 +63,10 @@ func (discovery *Discovery) RegisterServiceWithConsul() {
 	registration.Address = address
 	registration.Port = discovery.ConfigurationService.API_PORT
 	registration.Check = new(consulapi.AgentServiceCheck)
-	registration.Check.HTTP = fmt.Sprintf("http://%s:%v/health",
-		address, discovery.ConfigurationService.API_PORT)
+	registration.Check.HTTP = "http://" + address + ":" + strconv.Itoa(discovery.ConfigurationService.API_PORT) + "/health"
 	registration.Check.Interval = "5s"
 	registration.Check.Timeout = "3s"
+	log.Println("registration information: ", registration.Check.HTTP)
 	if errRegister := discovery.ConsulClient.Agent().ServiceRegister(registration); errRegister != nil {
 		log.Println("can not registering in consule: ", errRegister)
 		os.Exit(1)

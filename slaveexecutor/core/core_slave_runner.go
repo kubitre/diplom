@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -20,7 +21,7 @@ import (
 )
 
 type (
-	// CoreSlaveRunner - ядро для слейва*/
+	/*CoreSlaveRunner - ядро для слейва*/
 	CoreSlaveRunner struct {
 		Git          *gitmod.Git
 		Docker       *docker_runner.DockerExecutor
@@ -31,8 +32,8 @@ type (
 	}
 	/*Worker - единичная воркер функция, которая отвечает за выполнение всех job на одной стадии одной задачи*/
 	Worker struct {
-		Task   chan models.Job        // текущая задача у воркера
-		Result chan models.OutputTask // текущий результат у воркера (лог файл и попытка спарсить результат)
+		Task   chan models.Job         // текущая задача у воркера
+		Result chan models.LogsPerTask // текущий результат у воркера (лог файл)
 	}
 )
 
@@ -137,36 +138,84 @@ func (core *CoreSlaveRunner) executingJobsInStage(stage string, taskConfig *mode
 	for indexJob, job := range currentJobs {
 		jobsChecked[indexJob] = make(chan int, 1)
 		log.Info("current tasks for stage: ", stage, "; job: ", job)
-		jobResult := make(chan models.OutputTask, 1)
+		jobResult := make(chan models.LogsPerTask, 1)
 		go executingParallelJobPerStage(job, core, jobResult)
 		go checkJobResult(jobResult, job, core, jobsChecked[indexJob])
 	}
 	return jobsChecked
 }
 
-func checkJobResult(jobResult chan models.OutputTask, job models.Job, core *CoreSlaveRunner, jobChecked chan int) {
+func checkJobResult(jobResult chan models.LogsPerTask, job models.Job, core *CoreSlaveRunner, jobChecked chan int) {
 	log.Println("start checking result work for job: ", job.JobName)
 	result := <-jobResult
+	allLogs := mergeSTD(result)
+	parseSTDToReport(allLogs, job)
 	allServices := core.Discovery.GetService("master-executor", "master")
 	address := allServices[0].Address + ":" + strconv.Itoa(allServices[0].ServicePort)
 	// add Job output
-	resultMarshal, errMarshal := json.Marshal(&result)
-	if errMarshal != nil {
-		log.Println("can not marshaled response: ", errMarshal)
-		jobChecked <- 1
+	if errSend := sendResultLogsToMaster("http://"+address+"/task/"+job.TaskID+"/log/"+job.Stage+"/"+job.JobName, result); errSend != nil {
+		jobChecked <- -1
 		return
 	}
-	r := bytes.NewReader(resultMarshal)
-	resp, err := http.Post("http://"+address+"/task/"+job.TaskID+"/log/"+job.Stage+"/"+job.JobName, "application/json", r)
-	if err != nil {
-		log.Error("can not execute request", err)
-		jobChecked <- -1
-	}
-	log.Debug("response from master: ", resp)
 	jobChecked <- 1
 }
 
-func executingParallelJobPerStage(job models.Job, core *CoreSlaveRunner, jobResult chan models.OutputTask) {
+func mergeSTD(jobResult models.LogsPerTask) (result string) {
+	for _, value := range jobResult.STDOUT {
+		result += value + "\n"
+	}
+	for _, value := range jobResult.STDERR {
+		result += value + "\n"
+	}
+	return
+}
+
+func parseSTDToReport(allLogs string, job models.Job) {
+	log.Println("start extracting data from logs to report by regexp: ", job)
+	for nameRegular, rex := range job.Reports {
+		log.Println("start extracting report: ", rex, " name: ", nameRegular)
+		parseSTD(rex, allLogs)
+	}
+}
+
+func parseSTD(regx string, logs string) {
+	reg := regexp.MustCompile(regx)
+	founded := reg.FindStringSubmatch(logs)
+	log.Println("founded: ", founded)
+	log.Println("sub groups: ", reg.SubexpNames)
+}
+
+func sendResultLogsToMaster(address string, jobResult models.LogsPerTask) error {
+	resultMarshal, errMarshal := json.Marshal(&jobResult)
+	if errMarshal != nil {
+		log.Println("can not marshaled response: ", errMarshal)
+		return errMarshal
+	}
+	r := bytes.NewReader(resultMarshal)
+	resp, err := http.Post(address, "application/json", r)
+	if err != nil {
+		log.Error("can not execute request", err)
+		return err
+	}
+	log.Debug("response from master: ", resp)
+	return nil
+}
+
+func readSTD(buffer *bytes.Buffer) []string {
+	var result []string
+	for {
+		line, err := buffer.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+		}
+		result = append(result, line)
+	}
+	return result
+}
+
+func executingParallelJobPerStage(job models.Job, core *CoreSlaveRunner, jobResult chan models.LogsPerTask) {
 	log.Println("start preparing job: ", job.JobName)
 	if err := core.prepareTask(job); err != nil {
 		log.Error("error while preparing task. ", err)
@@ -185,29 +234,14 @@ func executingParallelJobPerStage(job models.Job, core *CoreSlaveRunner, jobResu
 	stderr := new(bytes.Buffer)
 	_, err = stdcopy.StdCopy(stdout, stderr, responseCloser)
 	// ADD PARSING STDOUT and STDERR
-	output := models.OutputTask{}
-	for {
-		line, err := stdout.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-		}
-		output.STDOUT = append(output.STDOUT, line)
-	}
-	for {
-		line, err := stderr.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-		}
-		output.STDERR = append(output.STDERR, line)
+	output := models.LogsPerTask{
+		STDERR: readSTD(stderr),
+		STDOUT: readSTD(stdout),
 	}
 	log.Println("output: ", output)
 	defer responseCloser.Close()
 	if err != nil {
-		jobResult <- models.OutputTask{}
+		jobResult <- models.LogsPerTask{}
 	}
 	jobResult <- output
 }

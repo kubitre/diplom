@@ -14,7 +14,7 @@ func Test_createDefaultContainer(t *testing.T) {
 		t.Error("can not create client for docker manipulation. Error: ", errCreateExecutor.Error())
 		return
 	}
-	if err := dockerExecutor.removeContainer("container_test_test10"); err != nil {
+	if err := dockerExecutor.RemoveContainer("container_test_test10"); err != nil {
 		t.Log("can not remove container. ", err.Error())
 	}
 
@@ -38,15 +38,4 @@ func Test_createDefaultContainer(t *testing.T) {
 		panic(err)
 	}
 	t.Log("logs from container: ", writer)
-	t.Error()
 }
-
-// func Test_createContainerError(t *testing.T) {
-// 	DockerExecutor, errCreate := NewDockerExecutor()
-// 	if errCreate != nil {
-// 		t.Error("can not create executor of docker. " + errCreate.Error())
-// 	}
-// 	if err := DockerExecutor.CreateContainer(&models.ContainerCreatePayload{}); err == nil {
-// 		t.Error("can not create container")
-// 	}
-// }

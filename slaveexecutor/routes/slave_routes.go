@@ -46,6 +46,7 @@ func (route *SlaveRouter) createNewTask(writer http.ResponseWriter, request *htt
 
 func (route *SlaveRouter) healthCheck(writer http.ResponseWriter, request *http.Request) {
 	writer.WriteHeader(http.StatusOK)
+	writer.Write([]byte("service are running"))
 }
 
 // ConfigureRouter - конфигурирование роутера

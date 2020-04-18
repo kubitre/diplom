@@ -4,15 +4,39 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 
 	"github.com/kubitre/diplom/slaveexecutor/config"
 	"github.com/kubitre/diplom/slaveexecutor/core"
-	"github.com/kubitre/diplom/slaveexecutor/discovery"
 	"github.com/kubitre/diplom/slaveexecutor/routes"
 )
 
+func handlingGracefullShutdown(sig chan os.Signal, runCore *core.CoreSlaveRunner) {
+	for {
+		sg := <-sig
+		switch sg {
+		case syscall.SIGINT, syscall.SIGTERM:
+			break
+		default:
+			continue
+		}
+
+		log.Println("init kill: ", sg)
+		signal.Reset(sg)
+		break
+	}
+
+	log.Println("gracefull shutdown")
+
+	runCore.Discovery.UnregisterCurrentService()
+	os.Exit(0)
+}
+
 func main() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig)
 	conf, err := config.ConfiguringService()
 	if err != nil {
 		log.Println("can not configuring service: ", err)
@@ -28,13 +52,9 @@ func main() {
 	slaveRouter := routes.InitNewSlaveRouter(core)
 	slaveRouter.ConfigureRouter()
 	muxRouter := slaveRouter.GetRouter()
-	freePort, errPort := discovery.GetAvailablePort()
-	if errPort != nil {
-		log.Println("can not get a free port in system: ", errPort)
-		os.Exit(1)
-	}
-	log.Println("initialize api on port: ", strconv.Itoa(freePort))
-	if err := http.ListenAndServe(":"+strconv.Itoa(freePort), muxRouter); err != nil {
+	log.Println("initialize api on port: ", strconv.Itoa(conf.API_PORT))
+	go handlingGracefullShutdown(sig, core)
+	if err := http.ListenAndServe(":"+strconv.Itoa(conf.API_PORT), muxRouter); err != nil {
 		log.Println("can not start slave executor: ", err)
 		os.Exit(1)
 	}
