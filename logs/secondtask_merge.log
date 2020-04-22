@@ -1,0 +1,16 @@
+file: logs/secondtask/test1/job1.log
+_______________________________________________
+this is log in first log file
+################################################
+file: logs/secondtask/test1/job2.log
+_______________________________________________
+this is log on first job
+################################################
+file: logs/secondtask/test2/job1.log
+_______________________________________________
+this is log in test2 stage by first log
+################################################
+file: logs/secondtask/test2/job2.log
+_______________________________________________
+this is log in test2 job for second job
+################################################
