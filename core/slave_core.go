@@ -12,11 +12,6 @@ import (
 	"strings"
 
 	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/kubitre/diplom/slaveexecutor/config"
-	"github.com/kubitre/diplom/slaveexecutor/discovery"
-	"github.com/kubitre/diplom/slaveexecutor/docker_runner"
-	"github.com/kubitre/diplom/slaveexecutor/gitmod"
-	"github.com/kubitre/diplom/slaveexecutor/models"
 	log "github.com/sirupsen/logrus"
 )
 

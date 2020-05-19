@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/kubitre/diplom/slaveexecutor/models"
 )
 
 func Test_createDefaultContainer(t *testing.T) {

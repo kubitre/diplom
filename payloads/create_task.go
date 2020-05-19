@@ -3,7 +3,6 @@ package payloads
 import (
 	"log"
 
-	"github.com/kubitre/diplom/masterexecutor/models"
 	"gopkg.in/yaml.v2"
 )
 

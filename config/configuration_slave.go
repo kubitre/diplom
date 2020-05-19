@@ -25,5 +25,5 @@ func ConfigureService() (*ConfigurationSlaveRunner, error) {
 
 /*SetupNewPort - install port for binding*/
 func (config *ConfigurationSlaveRunner) SetupNewPort(port int) {
-	config.API_PORT = port
+	config.APIPORT = port
 }

@@ -13,20 +13,23 @@ import (
 
 const (
 	slavePattern = "slave-executor#"
+	masterPattern = "master-executor#"
 	tagSlave     = "slave"
+	tagMaster = "master"
 )
 
 type Discovery struct {
 	CurrentServiceName   string
+	CurrentServiceType string
 	ConsulClient         *consulapi.Client
 	ConfigurationSlaveService *config.ConfigurationSlaveRunner
 	ConfigurationMasterService *config.ConfigurationMasterRunner
 }
 
 /*InitializeDiscovery - инициализация текущего Discovery*/
-func InitializeDiscovery(configSlave *config.SlaveConfiguration, configMaster *config.) *Discovery {
+func InitializeDiscovery(typeService string, configSlave *config.SlaveConfiguration, configMaster *config.) *Discovery {
 	return &Discovery{
-		CurrentServiceName:   "slave-executor#" + uuid.New().String(),
+		CurrentServiceName:   typeService + uuid.New().String(),
 		ConsulClient:         nil,
 		ConfigurationService: config,
 	}
@@ -51,13 +54,12 @@ func (discovery *Discovery) NewClientForConsule() error {
 }
 
 /*RegisterServiceWithConsul - регистрация сервиса в consul*/
-func (discovery *Discovery) RegisterServiceWithConsul() {
-	log.Println("start registration slave executor in consul")
+func (discovery *Discovery) RegisterServiceWithConsul(tags[]string) {
+	log.Println("start registration" + discovery.CurrentServiceName + "in consul")
 	registration := new(consulapi.AgentServiceRegistration)
-	registration.ID = "slave-executor#" + uuid.New().String()
-	discovery.CurrentServiceName = registration.ID
-	registration.Name = "slave-executor"
-	registration.Tags = []string{"slave", "executor"}
+	registration.ID = discovery.CurrentServiceName
+	registration.Name = discovery.CurrentServiceType
+	registration.Tags = tags
 	log.Println("registration information about out service: ", registration)
 	address := hostname()
 	registration.Address = address

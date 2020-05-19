@@ -3,9 +3,8 @@ package core
 import (
 	"testing"
 
-	"github.com/kubitre/diplom/slaveexecutor/config"
-	"github.com/kubitre/diplom/slaveexecutor/gitmod"
-	"github.com/kubitre/diplom/slaveexecutor/models"
+	"github.com/kubitre/diplom/gitmod"
+	"github.com/kubitre/diplom/models"
 )
 
 func TestCreateNewRunnerSuccess(t *testing.T) {
