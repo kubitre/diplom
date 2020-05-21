@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	slavePattern  = "slave-executor#"
-	masterPattern = "master-executor#"
-	tagSlave      = "slave"
-	tagMaster     = "master"
+	SlavePattern  = "slave-executor#"
+	MasterPattern = "master-executor#"
+	TagSlave      = "slave"
+	TagMaster     = "master"
 )
 
 type Discovery struct {

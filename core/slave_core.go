@@ -40,6 +40,7 @@ type (
 /*NewCoreSlaveRunner - инициализация нового ядра слейв модуля*/
 func NewCoreSlaveRunner(
 	config *config.ConfigurationSlaveRunner,
+	configService *config.ServiceConfig,
 ) (*SlaveRunnerCore, error) {
 	dock, err := docker_runner.NewDockerExecutor()
 	if err != nil {
@@ -51,15 +52,15 @@ func NewCoreSlaveRunner(
 		log.Println("can not initialize new port: ", errPort)
 		os.Exit(1)
 	}
-	config.SetupNewPort(port)
+	configService.SetupNewPort(port)
 	log.Println("start initialize discovery module")
-	discove := discovery.InitializeDiscovery(config)
+	discove := discovery.InitializeDiscovery(discovery.SlavePattern, configService)
 	if errClientConsul := discove.NewClientForConsule(); errClientConsul != nil {
 		log.Println("can not register client in consul: ", errClientConsul)
 		os.Exit(1)
 	}
 	log.Println("completed initilize discovery module")
-	discove.RegisterServiceWithConsul()
+	discove.RegisterServiceWithConsul([]string{discovery.TagSlave})
 	return &SlaveRunnerCore{
 		Git:          &gitmod.Git{},
 		Docker:       dock,

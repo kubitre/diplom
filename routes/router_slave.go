@@ -16,13 +16,8 @@ type SlaveRunnerRouter struct {
 	Core   *core.SlaveRunnerCore
 }
 
-const (
-	apiTask        = "/task"
-	apiHealthCheck = "/health"
-)
-
 /*InitNewSlaveRunnerRouter - initialize slave router*/
-func InitNewSlaveRunnerRouter(core *core.CoreSlaveRunner) *SlaveRunnerRouter {
+func InitNewSlaveRunnerRouter(core *core.SlaveRunnerCore) *SlaveRunnerRouter {
 	return &SlaveRunnerRouter{
 		Router: mux.NewRouter(),
 		Core:   core,

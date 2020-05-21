@@ -20,7 +20,8 @@ import (
 	"github.com/docker/docker/pkg/term"
 	"github.com/docker/go-connections/nat"
 	"github.com/kubitre/diplom/models"
-	"github.com/kubitre/diplom/slaveexecutor/utils"
+	"github.com/kubitre/diplom/tools"
+	log "github.com/sirupsen/logrus"
 )
 
 type (
@@ -275,7 +276,7 @@ func (docker *DockerExecutor) copyDir(src string, dst string) (err error) {
 }
 
 func (docker *DockerExecutor) prepareExecutingScript(shell []string) error {
-	result, err := utils.CreateExecutingScript(shell)
+	result, err := tools.CreateExecutingScript(shell)
 	if err != nil {
 		return err
 	}

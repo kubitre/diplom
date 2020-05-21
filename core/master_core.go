@@ -7,35 +7,36 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/kubitre/diplom/config"
 	"github.com/kubitre/diplom/discovery"
+	"github.com/kubitre/diplom/routes"
 )
 
 /*MasterRunnerCore - ядро master ноды*/
 type MasterRunnerCore struct {
 	RouterRunner  *routes.MasterRunnerRouter
 	Discovery     *discovery.Discovery
-	SlaveMoniring *core.SlaveMonitoring
+	SlaveMoniring *SlaveMonitoring
 }
 
 /*InitNewCore - инициализация ядра текущего сервиса*/
 func InitNewCore(config *config.ConfigurationSlaveRunner,
 	configService *config.ServiceConfig,
 ) (*MasterRunnerCore, error) {
-	slaveMonitor, err := core.InitializeNewSlaveMonitoring(config.MaxTaskPerSlave)
+	slaveMonitor, err := InitializeNewSlaveMonitoring(config.MaxTaskPerSlave)
 	if err != nil {
 		return nil, err
 	}
 	slaveMonitor.LastUsingService <- core.INIT_USED_SLAVE
 	return &MasterRunnerCore{
 		SlaveMoniring: slaveMonitor,
-		RouterRunner:  routes.InitializeRunnerRouter(slaveMonitor, config),
-		Discovery:     discovery.InitializeDiscovery(configService),
+		RouterRunner:  routes.InitializeMasterRunnerRouter(slaveMonitor, config),
+		Discovery:     discovery.InitializeDiscovery(discovery.MasterPattern, configService),
 	}, nil
 }
 
 /*Run - запуск роутера, discovery, получение информации о слейвах*/
 func (core *MasterRunnerCore) Run(config *config.ConfigurationMasterRunner) {
 	core.Discovery.NewClientForConsule()
-	core.Discovery.RegisterServiceWithConsul()
+	core.Discovery.RegisterServiceWithConsul([]string{discovery.TagMaster})
 	core.RouterRunner.ConfiguringRoutes()
 	go core.checkerNewSlave()
 
@@ -44,7 +45,7 @@ func (core *MasterRunnerCore) Run(config *config.ConfigurationMasterRunner) {
 func (core *MasterRunnerCore) checkerNewSlave() {
 	for {
 		log.Println("start finding slaves")
-		foundedSlaves := core.Discovery.CheckNewSlaves()
+		// foundedSlaves := core.Discovery.CheckNewSlaves()
 		log.Println("founded services: ", foundedSlaves)
 		core.SlaveMoniring.CompareAndSave(foundedSlaves)
 		time.Sleep(time.Second * 15)

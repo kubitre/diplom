@@ -3,7 +3,6 @@ package routes
 import (
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"mime"
 	"net/http"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"github.com/kubitre/diplom/enhancer"
 	"github.com/kubitre/diplom/models"
 	"github.com/kubitre/diplom/payloads"
+	log "github.com/sirupsen/logrus"
 )
 
 //MasterRunnerRouter - main router for master runner

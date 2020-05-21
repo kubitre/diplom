@@ -3,6 +3,7 @@ package docker_runner
 import (
 	"testing"
 
+	"github.com/kubitre/diplom/gitmod"
 	log "github.com/sirupsen/logrus"
 )
 
