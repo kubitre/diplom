@@ -4,19 +4,19 @@ import (
 	"log"
 
 	"github.com/kubitre/diplom/core"
-	"github.com/kubitre/diplom/parser"
+	"github.com/kubitre/diplom/tools"
 )
 
 func main() {
-	loadedFile, err := parser.TestLoadFile("./specifications/task.yaml")
+	loadedFile, err := tools.TestLoadFile("./specifications/task.yaml")
 	if err != nil {
 		log.Panic(err)
 	}
-	runn, err := parser.ParseObj(loadedFile)
+	runn, err := tools.ParseObj(loadedFile)
 	if err != nil {
 		log.Panic(err)
 	}
-	runner, err := core.NewCoreRunner(1, nil)
+	runner, err := core.NewCoreSlaveRunner(nil, nil)
 	if err != nil {
 		log.Panic(err)
 	}

@@ -12,7 +12,7 @@ func TestCreateNewRunnerSuccess(t *testing.T) {
 	if _, err := NewCoreSlaveRunner(&config.ConfigurationSlaveRunner{
 		AmountPullWorkers:          10,
 		AmountParallelTaskPerStage: 100,
-	}); err != nil {
+	}, &config.ServiceConfig{}); err != nil {
 		t.Error("not created runner." + err.Error())
 	}
 }
@@ -23,7 +23,7 @@ func Test_SetupConfigurationPipeline(t *testing.T) {
 		&config.ConfigurationSlaveRunner{
 			AmountPullWorkers:          10,
 			AmountParallelTaskPerStage: 100,
-		},
+		}, &config.ServiceConfig{},
 	)
 	if err != nil {
 		t.Error("not created runner." + err.Error())
@@ -50,7 +50,7 @@ func Test_SetupConfigurationPipelineZeroStages(t *testing.T) {
 	runner, err := NewCoreSlaveRunner(&config.ConfigurationSlaveRunner{
 		AmountPullWorkers:          10,
 		AmountParallelTaskPerStage: 100,
-	})
+	}, &config.ServiceConfig{})
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
@@ -76,7 +76,7 @@ func Test_SetupConfigurationPipelineZeroTasks(t *testing.T) {
 	runner, err := NewCoreSlaveRunner(&config.ConfigurationSlaveRunner{
 		AmountPullWorkers:          10,
 		AmountParallelTaskPerStage: 100,
-	})
+	}, &config.ServiceConfig{})
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
@@ -97,7 +97,7 @@ func Test_CreatePipelineError(t *testing.T) {
 	runner, err := NewCoreSlaveRunner(&config.ConfigurationSlaveRunner{
 		AmountPullWorkers:          10,
 		AmountParallelTaskPerStage: 100,
-	})
+	}, &config.ServiceConfig{})
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}
@@ -113,7 +113,7 @@ func Test_CreatePipelineWithConfig(t *testing.T) {
 	runner, err := NewCoreSlaveRunner(&config.ConfigurationSlaveRunner{
 		AmountPullWorkers:          10,
 		AmountParallelTaskPerStage: 100,
-	})
+	}, &config.ServiceConfig{})
 	if err != nil {
 		t.Error("not created runner." + err.Error())
 	}

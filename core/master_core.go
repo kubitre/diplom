@@ -4,31 +4,28 @@ import (
 	"log"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/kubitre/diplom/config"
 	"github.com/kubitre/diplom/discovery"
-	"github.com/kubitre/diplom/routes"
+	"github.com/kubitre/diplom/monitor"
 )
 
 /*MasterRunnerCore - ядро master ноды*/
 type MasterRunnerCore struct {
-	RouterRunner  *routes.MasterRunnerRouter
 	Discovery     *discovery.Discovery
-	SlaveMoniring *SlaveMonitoring
+	SlaveMoniring *monitor.SlaveMonitoring
 }
 
 /*InitNewCore - инициализация ядра текущего сервиса*/
 func InitNewCore(config *config.ConfigurationSlaveRunner,
 	configService *config.ServiceConfig,
 ) (*MasterRunnerCore, error) {
-	slaveMonitor, err := InitializeNewSlaveMonitoring(config.MaxTaskPerSlave)
+	slaveMonitor, err := monitor.InitializeNewSlaveMonitoring(config.AmountParallelTaskPerStage)
 	if err != nil {
 		return nil, err
 	}
-	slaveMonitor.LastUsingService <- core.INIT_USED_SLAVE
+	slaveMonitor.LastUsingService <- monitor.INIT_USED_SLAVE
 	return &MasterRunnerCore{
 		SlaveMoniring: slaveMonitor,
-		RouterRunner:  routes.InitializeMasterRunnerRouter(slaveMonitor, config),
 		Discovery:     discovery.InitializeDiscovery(discovery.MasterPattern, configService),
 	}, nil
 }
@@ -37,7 +34,6 @@ func InitNewCore(config *config.ConfigurationSlaveRunner,
 func (core *MasterRunnerCore) Run(config *config.ConfigurationMasterRunner) {
 	core.Discovery.NewClientForConsule()
 	core.Discovery.RegisterServiceWithConsul([]string{discovery.TagMaster})
-	core.RouterRunner.ConfiguringRoutes()
 	go core.checkerNewSlave()
 
 }
@@ -45,7 +41,7 @@ func (core *MasterRunnerCore) Run(config *config.ConfigurationMasterRunner) {
 func (core *MasterRunnerCore) checkerNewSlave() {
 	for {
 		log.Println("start finding slaves")
-		// foundedSlaves := core.Discovery.CheckNewSlaves()
+		foundedSlaves := core.Discovery.GetService(discovery.SlavePattern, discovery.TagSlave)
 		log.Println("founded services: ", foundedSlaves)
 		core.SlaveMoniring.CompareAndSave(foundedSlaves)
 		time.Sleep(time.Second * 15)
@@ -55,9 +51,4 @@ func (core *MasterRunnerCore) checkerNewSlave() {
 /*UnregisterService - де регистрация сервиса из consul*/
 func (core *MasterRunnerCore) UnregisterService() {
 	core.Discovery.UnregisterCurrentService()
-}
-
-/*GetRouter - получение сконфигурированного роутера*/
-func (core *MasterRunnerCore) GetRouter() *mux.Router {
-	return core.RouterRunner.GetRouterMux()
 }

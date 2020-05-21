@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -177,16 +176,16 @@ func parseSTDToReport(allLogs string, job models.Job) {
 	log.Println("start extracting data from logs to report by regexp: ", job)
 	for nameRegular, rex := range job.Reports {
 		log.Println("start extracting report: ", rex, " name: ", nameRegular)
-		parseSTD(rex, allLogs)
+		// parseSTD(rex, allLogs)
 	}
 }
 
-func parseSTD(regx string, logs string) {
-	reg := regexp.MustCompile(regx)
-	founded := reg.FindStringSubmatch(logs)
-	log.Println("founded: ", founded)
-	log.Println("sub groups: ", reg.SubexpNames)
-}
+// func parseSTD(regx string, logs string) {
+// 	reg := regexp.MustCompile(regx)
+// 	founded := reg.FindStringSubmatch(logs)
+// 	log.Println("founded: ", founded)
+// 	log.Println("sub groups: ", reg.SubexpNames)
+// }
 
 func sendResultLogsToMaster(address string, jobResult models.LogsPerTask) error {
 	resultMarshal, errMarshal := json.Marshal(&jobResult)

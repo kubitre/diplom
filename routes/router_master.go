@@ -10,9 +10,9 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/kubitre/diplom/config"
-	"github.com/kubitre/diplom/core"
 	"github.com/kubitre/diplom/enhancer"
 	"github.com/kubitre/diplom/models"
+	"github.com/kubitre/diplom/monitor"
 	"github.com/kubitre/diplom/payloads"
 	log "github.com/sirupsen/logrus"
 )
@@ -20,8 +20,8 @@ import (
 //MasterRunnerRouter - main router for master runner
 type MasterRunnerRouter struct {
 	Router          *mux.Router
-	SlaveMonitoring *core.SlaveMonitoring
 	Config          *config.ConfigurationMasterRunner
+	SlaveMonitoring *monitor.SlaveMonitoring
 }
 
 const (
@@ -42,7 +42,7 @@ const (
 )
 
 // InitializeMasterRunnerRouter - инициализация роутера мастер ноды
-func InitializeMasterRunnerRouter(slaveMonitor *core.SlaveMonitoring, config *config.ConfigurationMasterRunner) *MasterRunnerRouter {
+func InitializeMasterRunnerRouter(slaveMonitor *monitor.SlaveMonitoring, config *config.ConfigurationMasterRunner) *MasterRunnerRouter {
 	return &MasterRunnerRouter{
 		Router:          mux.NewRouter(),
 		SlaveMonitoring: slaveMonitor,
