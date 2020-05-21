@@ -12,6 +12,11 @@ import (
 	"strings"
 
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/kubitre/diplom/config"
+	"github.com/kubitre/diplom/discovery"
+	"github.com/kubitre/diplom/docker_runner"
+	"github.com/kubitre/diplom/gitmod"
+	"github.com/kubitre/diplom/models"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -83,7 +88,7 @@ func runParallelExecutors(
 	return resultChannels
 }
 
-func executor(executorID int, taskChallenge chan models.TaskConfig, close chan string, core CoreSlaveRunner) {
+func executor(executorID int, taskChallenge chan models.TaskConfig, close chan string, core SlaveRunnerCore) {
 	for {
 		select {
 		case close := <-close:
@@ -141,7 +146,7 @@ func (core *SlaveRunnerCore) executingJobsInStage(stage string, taskConfig *mode
 	return jobsChecked
 }
 
-func checkJobResult(jobResult chan models.LogsPerTask, job models.Job, core *CoreSlaveRunner, jobChecked chan int) {
+func checkJobResult(jobResult chan models.LogsPerTask, job models.Job, core *SlaveRunnerCore, jobChecked chan int) {
 	log.Println("start checking result work for job: ", job.JobName)
 	result := <-jobResult
 	allLogs := mergeSTD(result)
@@ -212,7 +217,7 @@ func readSTD(buffer *bytes.Buffer) []string {
 	return result
 }
 
-func executingParallelJobPerStage(job models.Job, core *CoreSlaveRunner, jobResult chan models.LogsPerTask) {
+func executingParallelJobPerStage(job models.Job, core *SlaveRunnerCore, jobResult chan models.LogsPerTask) {
 	log.Println("start preparing job: ", job.JobName)
 	if err := core.prepareTask(job); err != nil {
 		log.Error("error while preparing task. ", err)

@@ -10,12 +10,17 @@ import (
 	"path/filepath"
 
 	"github.com/gorilla/mux"
+	"github.com/kubitre/diplom/config"
+	"github.com/kubitre/diplom/core"
+	"github.com/kubitre/diplom/enhancer"
+	"github.com/kubitre/diplom/models"
+	"github.com/kubitre/diplom/payloads"
 )
 
 //MasterRunnerRouter - main router for master runner
 type MasterRunnerRouter struct {
 	Router          *mux.Router
-	SlaveMonitoring *slaves.SlaveMonitoring
+	SlaveMonitoring *core.SlaveMonitoring
 	Config          *config.ConfigurationMasterRunner
 }
 
@@ -37,7 +42,7 @@ const (
 )
 
 // InitializeMasterRunnerRouter - инициализация роутера мастер ноды
-func InitializeMasterRunnerRouter(slaveMonitor *slaves.SlaveMonitoring, config *config.ConfigurationMasterRunner) *MasterRunnerRouter {
+func InitializeMasterRunnerRouter(slaveMonitor *core.SlaveMonitoring, config *config.ConfigurationMasterRunner) *MasterRunnerRouter {
 	return &MasterRunnerRouter{
 		Router:          mux.NewRouter(),
 		SlaveMonitoring: slaveMonitor,
@@ -191,7 +196,7 @@ func (route *MasterRunnerRouter) getAllLogsTree(writer http.ResponseWriter, requ
 // создание логов с выполненной работы post {taskID, stage, logcontent}
 func (route *MasterRunnerRouter) createLogTask(writer http.ResponseWriter, request *http.Request) {
 	log.Println("start creating new log")
-	var model models.OutputTask
+	var model models.LogsPerTask
 	if err := json.NewDecoder(request.Body).Decode(&model); err != nil {
 		log.Println("can not parsed body: ", err)
 		enhancer.Response(request, writer, map[string]interface{}{

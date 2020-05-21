@@ -9,29 +9,31 @@ import (
 
 	"github.com/google/uuid"
 	consulapi "github.com/hashicorp/consul/api"
+	"github.com/kubitre/diplom/config"
 )
 
 const (
-	slavePattern = "slave-executor#"
+	slavePattern  = "slave-executor#"
 	masterPattern = "master-executor#"
-	tagSlave     = "slave"
-	tagMaster = "master"
+	tagSlave      = "slave"
+	tagMaster     = "master"
 )
 
 type Discovery struct {
-	CurrentServiceName   string
+	CurrentServiceName string
 	CurrentServiceType string
-	ConsulClient         *consulapi.Client
-	ConfigurationSlaveService *config.ConfigurationSlaveRunner
-	ConfigurationMasterService *config.ConfigurationMasterRunner
+	ConsulClient       *consulapi.Client
+	ServiceConfig      *config.ServiceConfig
 }
 
 /*InitializeDiscovery - инициализация текущего Discovery*/
-func InitializeDiscovery(typeService string, configSlave *config.SlaveConfiguration, configMaster *config.) *Discovery {
+func InitializeDiscovery(
+	typeService string,
+	configService *config.ServiceConfig) *Discovery {
 	return &Discovery{
-		CurrentServiceName:   typeService + uuid.New().String(),
-		ConsulClient:         nil,
-		ConfigurationService: config,
+		CurrentServiceName: typeService + uuid.New().String(),
+		ConsulClient:       nil,
+		ServiceConfig:      configService,
 	}
 }
 
@@ -39,10 +41,10 @@ func InitializeDiscovery(typeService string, configSlave *config.SlaveConfigurat
 func (discovery *Discovery) NewClientForConsule() error {
 	log.Println("initialize new client for consul")
 	config := consulapi.Config{
-		Address: discovery.ConfigurationService.ConsulAddress,
+		Address: discovery.ServiceConfig.ConsulAddress,
 		HttpAuth: &consulapi.HttpBasicAuth{
-			Username: discovery.ConfigurationService.ConsulUsername,
-			Password: discovery.ConfigurationService.ConsulPassword,
+			Username: discovery.ServiceConfig.ConsulUsername,
+			Password: discovery.ServiceConfig.ConsulPassword,
 		},
 	}
 	consul, err := consulapi.NewClient(&config)
@@ -54,7 +56,7 @@ func (discovery *Discovery) NewClientForConsule() error {
 }
 
 /*RegisterServiceWithConsul - регистрация сервиса в consul*/
-func (discovery *Discovery) RegisterServiceWithConsul(tags[]string) {
+func (discovery *Discovery) RegisterServiceWithConsul(tags []string) {
 	log.Println("start registration" + discovery.CurrentServiceName + "in consul")
 	registration := new(consulapi.AgentServiceRegistration)
 	registration.ID = discovery.CurrentServiceName
@@ -63,9 +65,9 @@ func (discovery *Discovery) RegisterServiceWithConsul(tags[]string) {
 	log.Println("registration information about out service: ", registration)
 	address := hostname()
 	registration.Address = address
-	registration.Port = discovery.ConfigurationService.API_PORT
+	registration.Port = discovery.ServiceConfig.APIPORT
 	registration.Check = new(consulapi.AgentServiceCheck)
-	registration.Check.HTTP = "http://" + address + ":" + strconv.Itoa(discovery.ConfigurationService.API_PORT) + "/health"
+	registration.Check.HTTP = "http://" + address + ":" + strconv.Itoa(discovery.ServiceConfig.APIPORT) + "/health"
 	registration.Check.Interval = "5s"
 	registration.Check.Timeout = "3s"
 	log.Println("registration information: ", registration.Check.HTTP)

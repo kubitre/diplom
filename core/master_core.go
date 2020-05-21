@@ -5,31 +5,35 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/kubitre/diplom/config"
+	"github.com/kubitre/diplom/discovery"
 )
 
 /*MasterRunnerCore - ядро master ноды*/
 type MasterRunnerCore struct {
 	RouterRunner  *routes.MasterRunnerRouter
 	Discovery     *discovery.Discovery
-	SlaveMoniring *slaves.SlaveMonitoring
+	SlaveMoniring *core.SlaveMonitoring
 }
 
 /*InitNewCore - инициализация ядра текущего сервиса*/
-func InitNewCore(config *config.ConfigurationRunner) (*MasterRunnerCore, error) {
-	slaveMonitor, err := slaves.InitializeNewSlaveMonitoring(config.MaxTaskPerSlave)
+func InitNewCore(config *config.ConfigurationSlaveRunner,
+	configService *config.ServiceConfig,
+) (*MasterRunnerCore, error) {
+	slaveMonitor, err := core.InitializeNewSlaveMonitoring(config.MaxTaskPerSlave)
 	if err != nil {
 		return nil, err
 	}
-	slaveMonitor.LastUsingService <- slaves.INIT_USED_SLAVE
+	slaveMonitor.LastUsingService <- core.INIT_USED_SLAVE
 	return &MasterRunnerCore{
 		SlaveMoniring: slaveMonitor,
 		RouterRunner:  routes.InitializeRunnerRouter(slaveMonitor, config),
-		Discovery:     discovery.InitializeDiscovery(config),
+		Discovery:     discovery.InitializeDiscovery(configService),
 	}, nil
 }
 
 /*Run - запуск роутера, discovery, получение информации о слейвах*/
-func (core *MasterRunnerCore) Run(config *config.ConfigurationRunner) {
+func (core *MasterRunnerCore) Run(config *config.ConfigurationMasterRunner) {
 	core.Discovery.NewClientForConsule()
 	core.Discovery.RegisterServiceWithConsul()
 	core.RouterRunner.ConfiguringRoutes()

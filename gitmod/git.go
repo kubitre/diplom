@@ -4,9 +4,8 @@ import (
 	"os"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 	"gopkg.in/src-d/go-git.v4"
 )
 

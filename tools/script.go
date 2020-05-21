@@ -15,7 +15,7 @@ const (
 	`
 )
 
-/*CreateExecutiingScript - creating script for entrypoint layer in docker*/
+/*CreateExecutingScript - creating script for entrypoint layer in docker*/
 func CreateExecutingScript(shellCommands []string) ([]byte, error) {
 	templ := template.New("")
 	templ, err := templ.Parse(templateExecutingScript)

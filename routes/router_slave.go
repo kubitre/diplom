@@ -13,7 +13,7 @@ import (
 /*SlaveRunnerRouter - router for slave executor*/
 type SlaveRunnerRouter struct {
 	Router *mux.Router
-	Core   *core.
+	Core   *core.SlaveRunnerCore
 }
 
 const (

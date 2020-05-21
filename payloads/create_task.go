@@ -3,11 +3,12 @@ package payloads
 import (
 	"log"
 
+	"github.com/kubitre/diplom/models"
 	"gopkg.in/yaml.v2"
 )
 
 /*CreateNewTask - создание новой задачи на проверку
-*/
+ */
 type CreateNewTask struct {
 	TaskID string `json:"task_id"`
 	Task   []byte `json:"task"` // string with yaml format

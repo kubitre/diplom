@@ -3,12 +3,13 @@ package core
 import (
 	"testing"
 
+	"github.com/kubitre/diplom/config"
 	"github.com/kubitre/diplom/gitmod"
 	"github.com/kubitre/diplom/models"
 )
 
 func TestCreateNewRunnerSuccess(t *testing.T) {
-	if _, err := NewCoreSlaveRunner(&config.SlaveConfiguration{
+	if _, err := NewCoreSlaveRunner(&config.ConfigurationSlaveRunner{
 		AmountPullWorkers:          10,
 		AmountParallelTaskPerStage: 100,
 	}); err != nil {
@@ -19,7 +20,7 @@ func TestCreateNewRunnerSuccess(t *testing.T) {
 func Test_SetupConfigurationPipeline(t *testing.T) {
 
 	runner, err := NewCoreSlaveRunner(
-		&config.SlaveConfiguration{
+		&config.ConfigurationSlaveRunner{
 			AmountPullWorkers:          10,
 			AmountParallelTaskPerStage: 100,
 		},
@@ -46,7 +47,7 @@ func Test_SetupConfigurationPipeline(t *testing.T) {
 
 func Test_SetupConfigurationPipelineZeroStages(t *testing.T) {
 
-	runner, err := NewCoreSlaveRunner(&config.SlaveConfiguration{
+	runner, err := NewCoreSlaveRunner(&config.ConfigurationSlaveRunner{
 		AmountPullWorkers:          10,
 		AmountParallelTaskPerStage: 100,
 	})
@@ -72,7 +73,7 @@ func Test_SetupConfigurationPipelineZeroStages(t *testing.T) {
 
 func Test_SetupConfigurationPipelineZeroTasks(t *testing.T) {
 
-	runner, err := NewCoreSlaveRunner(&config.SlaveConfiguration{
+	runner, err := NewCoreSlaveRunner(&config.ConfigurationSlaveRunner{
 		AmountPullWorkers:          10,
 		AmountParallelTaskPerStage: 100,
 	})
@@ -93,7 +94,7 @@ func Test_SetupConfigurationPipelineZeroTasks(t *testing.T) {
 
 func Test_CreatePipelineError(t *testing.T) {
 
-	runner, err := NewCoreSlaveRunner(&config.SlaveConfiguration{
+	runner, err := NewCoreSlaveRunner(&config.ConfigurationSlaveRunner{
 		AmountPullWorkers:          10,
 		AmountParallelTaskPerStage: 100,
 	})
@@ -109,7 +110,7 @@ func Test_CreatePipelineError(t *testing.T) {
 
 func Test_CreatePipelineWithConfig(t *testing.T) {
 
-	runner, err := NewCoreSlaveRunner(&config.SlaveConfiguration{
+	runner, err := NewCoreSlaveRunner(&config.ConfigurationSlaveRunner{
 		AmountPullWorkers:          10,
 		AmountParallelTaskPerStage: 100,
 	})
