@@ -9,14 +9,16 @@ import (
 	"time"
 
 	consulapi "github.com/hashicorp/consul/api"
+	"github.com/kubitre/diplom/models"
 	"github.com/kubitre/diplom/payloads"
+	"github.com/kubitre/diplom/routes"
 )
 
 type (
 	/*SlaveMonitoring - monitoring for current available workers, current state of tasks*/
 	SlaveMonitoring struct {
 		SlavesAvailable          []Slave
-		LastUsingService         chan int
+		LastUsingService         int
 		CurrentTasks             []Task
 		MaxExecutingTaskPerSlave int
 	}
@@ -35,7 +37,6 @@ type (
 		ID                  string
 		Address             string
 		Port                int
-		CurrentStatus       SlaveStatus
 		CurrentExecuteTasks []int // index of SlaveMonitoring.CurrentTasks
 	}
 
@@ -45,28 +46,28 @@ type (
 		Stage       string
 	}
 
+	// TaskStatusIndx - индекс текущого статуса
 	TaskStatusIndx int
-	SlaveStatus    int
+	// SlaveStatus - статус слейв модуля
+	SlaveStatus int
 )
 
 const (
-	NEW      TaskStatusIndx = 0 // task saved in portal
-	QUEUED   TaskStatusIndx = 1 // task insert in master executor
-	RUNNING                 = 2 // task start in slave executor
-	CANCELED                = 3 // task was stopped by portal
-	FAILED                  = 4 // task was failed
-	SUCCESS                 = 5 // task was successfull
+	// NOTEXISTSTAGE - не существующая стадия
+	NOTEXISTSTAGE = "NOT_A_STAGE_()()"
 )
 
 const (
-	INIT_USED_SLAVE = -1
-)
-
-const (
-	// WAITING_WORK - Slave сервис ожидает работы
-	WAITING_WORK SlaveStatus = iota
-	// SLAVE_WORKING - Slave сервис в данный момент выполняет задание
-	SLAVE_WORKING = iota
+	// QUEUED - task insert in master executor and sending to
+	QUEUED TaskStatusIndx = 1
+	// RUNNING - task start in slave executor
+	RUNNING = 2
+	// CANCELED - task was stopped by client (like default plugin or portal)
+	CANCELED = 3
+	// FAILED - task was failed
+	FAILED = 4 // task was failed
+	// SUCCESS - task was successfully
+	SUCCESS = 5 // task was successfull
 )
 
 /*InitializeNewSlaveMonitoring - инициализация части мониторинга слейв модулей*/
@@ -75,7 +76,6 @@ func InitializeNewSlaveMonitoring(maxTaskPerSlave int) (*SlaveMonitoring, error)
 		return nil, errors.New("minimal task executing per slave is 1")
 	}
 	return &SlaveMonitoring{
-		LastUsingService:         make(chan int, 1),
 		MaxExecutingTaskPerSlave: maxTaskPerSlave,
 	}, nil
 }
@@ -89,7 +89,6 @@ func (slavemonitor *SlaveMonitoring) CompareAndSave(foundedServices []*consulapi
 				ID:                  value.ServiceID,
 				Address:             value.Address,
 				Port:                value.ServicePort,
-				CurrentStatus:       WAITING_WORK,
 				CurrentExecuteTasks: []int{},
 			})
 			return
@@ -108,21 +107,18 @@ func (slavemonitor *SlaveMonitoring) notExistService(service *consulapi.CatalogS
 	return true
 }
 
-func (slavemonitor *SlaveMonitoring) changeLastUsingServiceIndex(newindex int) {
-	slavemonitor.LastUsingService <- newindex
-}
-
 // SendSlaveTask - проксирование запроса от клиента на один из слейв сервисов
-func (slavemonitor *SlaveMonitoring) SendSlaveTask(request *http.Request, writer http.ResponseWriter, newTask payloads.CreateNewTask) error {
+func (slavemonitor *SlaveMonitoring) SendSlaveTask(request *http.Request, writer http.ResponseWriter, newTask *models.TaskConfig) error {
 	if newTask.TaskID == "" {
 		return errors.New("value of taskID can not be null or empty")
 	}
 	log.Println("start chosing slave executor")
+	// need refactoring
 	slaveID, err := slavemonitor.chooseHaveSpaceForWorkSlave()
 	if err != nil {
 		return err
 	}
-	body, err := newTask.ConvertToTaskConfigBytes()
+	body, err := newTask.ToByteArray()
 	if err != nil {
 		return err
 	}
@@ -131,7 +127,7 @@ func (slavemonitor *SlaveMonitoring) SendSlaveTask(request *http.Request, writer
 	slavemonitor.addNewTask(newTask.TaskID, slaveID)
 	addressSlave := "http://" + slavemonitor.SlavesAvailable[slaveID].Address + ":" + strconv.Itoa(slavemonitor.SlavesAvailable[slaveID].Port)
 	log.Println("starting redirect to : ", addressSlave)
-	http.Post(addressSlave+"/task", "application/json", rbody)
+	http.Post(addressSlave+routes.ApiTask, "application/json", rbody)
 	return nil
 }
 
@@ -142,7 +138,7 @@ func (slavemonitor *SlaveMonitoring) TaskResultFromSlave(payload payloads.Change
 			return slavemonitor.updateTaskStatus(payload.TaskID, TaskStatus{
 				StatusIndex: TaskStatusIndx(payload.NewStatus),
 				Stage:       payload.Stage,
-			}, payload.TimeFinished)
+			})
 		}
 	}
 
@@ -150,28 +146,28 @@ func (slavemonitor *SlaveMonitoring) TaskResultFromSlave(payload payloads.Change
 }
 
 func (slavemonitor *SlaveMonitoring) chooseHaveSpaceForWorkSlave() (int, error) {
-	currentUseSlaveIndex := 0
-	lastUsedIndex := <-slavemonitor.LastUsingService
-	if lastUsedIndex == -1 {
-		if len(slavemonitor.SlavesAvailable) > 0 {
-			slavemonitor.changeLastUsingServiceIndex(currentUseSlaveIndex)
-			return currentUseSlaveIndex, nil
-		}
-		return INIT_USED_SLAVE, errors.New("not installed slaves executors")
+	if len(slavemonitor.SlavesAvailable) == 0 {
+		return -1, errors.New("can not execute this task, because not have any available slave executors")
 	}
-	return slavemonitor.roundRobin()
+	currentUseSlaveIndex := 0
+	lastUsedIndex := slavemonitor.LastUsingService
+	if lastUsedIndex == len(slavemonitor.SlavesAvailable)-1 {
+		slavemonitor.changeLastIndex(currentUseSlaveIndex)
+		return currentUseSlaveIndex, nil
+	}
+	slavemonitor.changeLastIndex(lastUsedIndex + 1)
+	return lastUsedIndex + 1, nil
 }
 
-func (slavemonitor *SlaveMonitoring) roundRobin() (int, error) {
-	return 0, nil
+func (slavemonitor *SlaveMonitoring) changeLastIndex(newIndex int) {
+	slavemonitor.LastUsingService = newIndex
 }
 
-func (slavemonitor *SlaveMonitoring) updateOneOfSlave(index int, status SlaveStatus, currentExecutingTask int) {
+func (slavemonitor *SlaveMonitoring) updateOneOfSlave(index int, currentExecutingTask int) {
 	slave := slavemonitor.SlavesAvailable[index]
 	slavemonitor.SlavesAvailable[index] = Slave{
 		ID:                  slave.ID,
 		Address:             slave.Address,
-		CurrentStatus:       status,
 		CurrentExecuteTasks: append(slave.CurrentExecuteTasks, currentExecutingTask),
 		Port:                slave.Port,
 	}
@@ -181,25 +177,41 @@ func (slavemonitor *SlaveMonitoring) addNewTask(taskID string, slaveID int) {
 	slavemonitor.CurrentTasks = append(slavemonitor.CurrentTasks, Task{
 		ID:          taskID,
 		TimeCreated: time.Now().Unix(),
-		SlaveIndex:  slaveID,
+		Status: TaskStatus{
+			StatusIndex: QUEUED,
+			Stage:       "",
+		},
+		SlaveIndex: slaveID,
 	})
-	slavemonitor.updateOneOfSlave(slaveID, SLAVE_WORKING, len(slavemonitor.CurrentTasks)-1)
 }
 
-func (slavemonitor *SlaveMonitoring) updateTaskStatus(taskID string, newStatus TaskStatus, timeFinished int64) error {
+func (slavemonitor *SlaveMonitoring) updateTaskStatus(taskID string, newStatus TaskStatus) error {
 	for index, task := range slavemonitor.CurrentTasks {
-		if task.ID == taskID {
-			slavemonitor.CurrentTasks[index] = Task{
-				ID:            task.ID,
-				TimeCreated:   task.TimeCreated,
-				TimeFinishing: timeFinished,
-				SlaveIndex:    task.SlaveIndex,
-				Status:        newStatus,
-			}
+		timeFinish := time.Now().Unix()
+		if newStatus.StatusIndex != FAILED && newStatus.StatusIndex != SUCCESS && newStatus.StatusIndex != CANCELED {
+			timeFinish = -1
+		}
+		if result := slavemonitor.updateTasks(task.ID, taskID, index, newStatus, timeFinish); result {
 			return nil
 		}
 	}
 	return errors.New("can not update work status by undefined task")
+}
+
+// return true if task was updated, else return false
+func (slavemonitor *SlaveMonitoring) updateTasks(taskIDCycle string, taskIDUpdatable string, currentTaskIDx int, status TaskStatus, timeFinished int64) bool {
+	if taskIDCycle == taskIDUpdatable {
+		currentTask := slavemonitor.CurrentTasks[currentTaskIDx]
+		slavemonitor.CurrentTasks[currentTaskIDx] = Task{
+			ID:            taskIDCycle,
+			TimeCreated:   currentTask.TimeCreated,
+			TimeFinishing: timeFinished,
+			SlaveIndex:    currentTask.SlaveIndex,
+			Status:        status,
+		}
+		return true
+	}
+	return false
 }
 
 /*GetTaskStatus - получить текущий статус задачи по её идентификатору*/

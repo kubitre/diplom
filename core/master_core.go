@@ -23,7 +23,7 @@ func InitNewMasterRunnerCore(config *config.ConfigurationMasterRunner,
 	if err != nil {
 		return nil, err
 	}
-	slaveMonitor.LastUsingService <- monitor.INIT_USED_SLAVE
+	slaveMonitor.LastUsingService = 0
 	return &MasterRunnerCore{
 		SlaveMoniring: slaveMonitor,
 		Discovery:     discovery.InitializeDiscovery(discovery.MasterPattern, configService),

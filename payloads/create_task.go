@@ -8,7 +8,8 @@ import (
 )
 
 /*CreateNewTask - создание новой задачи на проверку
- */
+НЕ ИСПОЛЬЗУЕТСЯ,вместо юзается полноценная модель
+*/
 type CreateNewTask struct {
 	TaskID string `json:"task_id"`
 	Task   []byte `json:"task"` // string with yaml format

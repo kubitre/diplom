@@ -10,6 +10,7 @@ require (
 	github.com/docker/engine-api v0.4.1-0.20160908232104-4290f40c0566
 	github.com/docker/go-connections v0.4.0
 	github.com/docker/go-units v0.4.0 // indirect
+	github.com/ghodss/yaml v1.0.0
 	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/google/uuid v1.1.1
 	github.com/goreflect/gostructor v0.4.3
