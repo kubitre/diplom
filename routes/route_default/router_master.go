@@ -155,3 +155,6 @@ func (route *MasterRunnerRouter) ConfiguringRoutes() {
 func (route *MasterRunnerRouter) GetRouterMux() *mux.Router {
 	return route.Router
 }
+
+// MasterRouter - роутер дефолтный
+var MasterRouter MasterRunnerRouter

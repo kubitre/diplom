@@ -11,7 +11,6 @@ import (
 	consulapi "github.com/hashicorp/consul/api"
 	"github.com/kubitre/diplom/models"
 	"github.com/kubitre/diplom/payloads"
-	"github.com/kubitre/diplom/routes"
 )
 
 type (
@@ -127,7 +126,7 @@ func (slavemonitor *SlaveMonitoring) SendSlaveTask(request *http.Request, writer
 	slavemonitor.addNewTask(newTask.TaskID, slaveID)
 	addressSlave := "http://" + slavemonitor.SlavesAvailable[slaveID].Address + ":" + strconv.Itoa(slavemonitor.SlavesAvailable[slaveID].Port)
 	log.Println("starting redirect to : ", addressSlave)
-	http.Post(addressSlave+routes.ApiTask, "application/json", rbody)
+	http.Post(addressSlave+"/task", "application/json", rbody)
 	return nil
 }
 

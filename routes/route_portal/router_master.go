@@ -15,15 +15,15 @@ import (
 	"github.com/kubitre/diplom/services"
 )
 
-//MasterRunnerPortalRouter - main router for master runner for portal adaptation
-type MasterRunnerPortalRouter struct {
+//MasterRunnerRouter - main router for master runner for portal adaptation
+type MasterRunnerRouter struct {
 	Router  *mux.Router
 	service *services.MasterRunnerService
 }
 
 // InitializeMasterRunnerRouter - инициализация роутера мастер ноды
-func InitializeMasterRunnerRouter(masterService *services.MasterRunnerService) *MasterRunnerPortalRouter {
-	return &MasterRunnerPortalRouter{
+func InitializeMasterRunnerRouter(masterService *services.MasterRunnerService) *MasterRunnerRouter {
+	return &MasterRunnerRouter{
 		Router:  mux.NewRouter(),
 		service: masterService,
 	}
@@ -34,7 +34,7 @@ func initialRoutesSetup(router *mux.Router) *mux.Router {
 }
 
 // CreateNewTask - создание новой задачи на обработку репозитория кандидата post {workID, work by spec}
-func (route *MasterRunnerPortalRouter) CreateNewTask(writer http.ResponseWriter, request *http.Request) {
+func (route *MasterRunnerRouter) CreateNewTask(writer http.ResponseWriter, request *http.Request) {
 	var createNewTaskPayload models.TaskConfig
 	defer request.Body.Close()
 	if err := json.NewDecoder(request.Body).Decode(&createNewTaskPayload); err != nil {
@@ -56,7 +56,7 @@ func (route *MasterRunnerPortalRouter) CreateNewTask(writer http.ResponseWriter,
 }
 
 //ChangeTaskStatus - изменить текущий статус работы (остановить, запустить) post {taskID, status: [STARTED, STOPING, FINISHING, FAILED]}
-func (route *MasterRunnerPortalRouter) ChangeTaskStatus(writer http.ResponseWriter, request *http.Request) {
+func (route *MasterRunnerRouter) ChangeTaskStatus(writer http.ResponseWriter, request *http.Request) {
 	var statusTaskChangePayload payloads.ChangeStatusTask
 	defer request.Body.Close()
 	if err := json.NewDecoder(request.Body).Decode(&statusTaskChangePayload); err != nil {
@@ -77,13 +77,13 @@ func (route *MasterRunnerPortalRouter) ChangeTaskStatus(writer http.ResponseWrit
 }
 
 // GetLogTask - получение логов с работы get ?taskID=:taskID&stage?=:nameStage
-func (route *MasterRunnerPortalRouter) GetLogTask(writer http.ResponseWriter, request *http.Request) {
+func (route *MasterRunnerRouter) GetLogTask(writer http.ResponseWriter, request *http.Request) {
 	log.Println("start working with getting log")
 	route.service.GetLogsPerTask(request, writer)
 }
 
 // на стабилизацию
-func (route *MasterRunnerPortalRouter) getAllLogsTree(writer http.ResponseWriter, request *http.Request) {
+func (route *MasterRunnerRouter) getAllLogsTree(writer http.ResponseWriter, request *http.Request) {
 	log.Println("start working with getting all logs")
 	writer.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext("logs/workid/stage1.log")))
 	http.ServeFile(writer, request, "logs/workid/stage1.log")
@@ -94,35 +94,35 @@ func (route *MasterRunnerPortalRouter) getAllLogsTree(writer http.ResponseWriter
 }
 
 // CreateLogTask - создание логов с выполненной работы post {taskID, stage, logcontent}
-func (route *MasterRunnerPortalRouter) CreateLogTask(writer http.ResponseWriter, request *http.Request) {
+func (route *MasterRunnerRouter) CreateLogTask(writer http.ResponseWriter, request *http.Request) {
 	log.Println("start creating new log")
 	route.service.CreateLogTask(request, writer)
 }
 
 // GetTaskStatus - получение статуса задачи GET /taskID=:taskID
-func (route *MasterRunnerPortalRouter) GetTaskStatus(writer http.ResponseWriter, request *http.Request) {
+func (route *MasterRunnerRouter) GetTaskStatus(writer http.ResponseWriter, request *http.Request) {
 	route.service.GetTaskStatus(request, writer)
 }
 
 // GetStatusWorkers -  получение текущего статуса всех slave нод
-func (route *MasterRunnerPortalRouter) GetStatusWorkers(writer http.ResponseWriter, request *http.Request) {
+func (route *MasterRunnerRouter) GetStatusWorkers(writer http.ResponseWriter, request *http.Request) {
 	route.service.GetStatusWorkers(request, writer)
 }
 
 // GetReportsPerTask - получение отчётов по задаче
-func (route *MasterRunnerPortalRouter) GetReportsPerTask(writer http.ResponseWriter, request *http.Request) {
+func (route *MasterRunnerRouter) GetReportsPerTask(writer http.ResponseWriter, request *http.Request) {
 	route.service.GetReportPerTask(request, writer)
 }
 
 // healthcheck - статус сервиса для service discovery
-func (route *MasterRunnerPortalRouter) healthCheck(writer http.ResponseWriter, request *http.Request) {
+func (route *MasterRunnerRouter) healthCheck(writer http.ResponseWriter, request *http.Request) {
 	// implement logic for return current running works and amount slaves
 	writer.WriteHeader(http.StatusOK)
 	writer.Write([]byte("status is running"))
 }
 
 // обработка неизвестных запросов
-func (route *MasterRunnerPortalRouter) notFoundHandler(writer http.ResponseWriter, request *http.Request) {
+func (route *MasterRunnerRouter) notFoundHandler(writer http.ResponseWriter, request *http.Request) {
 	enhancer.Response(request, writer, map[string]interface{}{
 		"context": map[string]string{
 			"module":  "master_executor",
@@ -137,7 +137,7 @@ func (route *MasterRunnerPortalRouter) notFoundHandler(writer http.ResponseWrite
 
 /*ConfiguringRoutes - конфигурирование маршрутов
  */
-func (route *MasterRunnerPortalRouter) ConfiguringRoutes() {
+func (route *MasterRunnerRouter) ConfiguringRoutes() {
 	route.Router.HandleFunc(routes.ApiTaskCreate, route.CreateNewTask).Methods(http.MethodPost)
 	route.Router.HandleFunc(routes.ApiTaskChangeOrGetStatus, route.ChangeTaskStatus).Methods(http.MethodPost)
 	route.Router.HandleFunc(routes.ApiTaskChangeOrGetStatus, route.GetTaskStatus).Methods(http.MethodGet)
@@ -153,6 +153,9 @@ func (route *MasterRunnerPortalRouter) ConfiguringRoutes() {
 }
 
 /*GetRouterMux - получить сконфигурированный роутер*/
-func (route *MasterRunnerPortalRouter) GetRouterMux() *mux.Router {
+func (route *MasterRunnerRouter) GetRouterMux() *mux.Router {
 	return route.Router
 }
+
+// MasterRouter - роутер для портала
+var MasterRouter MasterRunnerRouter
