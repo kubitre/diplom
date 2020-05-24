@@ -49,8 +49,8 @@ func (route *SlaveRunnerRouter) healthCheck(writer http.ResponseWriter, request 
 // ConfigureRouter - конфигурирование роутера
 func (route *SlaveRunnerRouter) ConfigureRouter() {
 	log.Println("start configuring routes")
-	route.Router.HandleFunc(apiTask, route.createNewTask).Methods(http.MethodPost)
-	route.Router.HandleFunc(apiHealthCheck, route.healthCheck).Methods(http.MethodGet)
+	route.Router.HandleFunc(ApiTask, route.createNewTask).Methods(http.MethodPost)
+	route.Router.HandleFunc(ApiHealthCheck, route.healthCheck).Methods(http.MethodGet)
 	log.Println("completed configuring routes")
 }
 

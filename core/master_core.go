@@ -15,11 +15,11 @@ type MasterRunnerCore struct {
 	SlaveMoniring *monitor.SlaveMonitoring
 }
 
-/*InitNewCore - инициализация ядра текущего сервиса*/
-func InitNewCore(config *config.ConfigurationSlaveRunner,
+/*InitNewMasterRunnerCore - инициализация ядра текущего сервиса*/
+func InitNewMasterRunnerCore(config *config.ConfigurationMasterRunner,
 	configService *config.ServiceConfig,
 ) (*MasterRunnerCore, error) {
-	slaveMonitor, err := monitor.InitializeNewSlaveMonitoring(config.AmountParallelTaskPerStage)
+	slaveMonitor, err := monitor.InitializeNewSlaveMonitoring(config.MaxTaskPerSlave)
 	if err != nil {
 		return nil, err
 	}

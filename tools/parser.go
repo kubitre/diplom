@@ -2,6 +2,7 @@ package tools
 
 import (
 	"io/ioutil"
+	"log"
 
 	"github.com/kubitre/diplom/models"
 	"gopkg.in/yaml.v2"
@@ -10,6 +11,7 @@ import (
 /*ParseObj - parsing from yaml*/
 func ParseObj(data []byte) (*models.TaskConfig, error) {
 	run := models.TaskConfig{}
+	log.Println(string(data))
 	err := yaml.Unmarshal(data, &run)
 	if err != nil {
 		return nil, err

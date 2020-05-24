@@ -1,4 +1,4 @@
-package routes
+package route_default
 
 import (
 	"encoding/json"
@@ -9,44 +9,25 @@ import (
 	"path/filepath"
 
 	"github.com/gorilla/mux"
-	"github.com/kubitre/diplom/config"
 	"github.com/kubitre/diplom/enhancer"
 	"github.com/kubitre/diplom/models"
 	"github.com/kubitre/diplom/monitor"
 	"github.com/kubitre/diplom/payloads"
+	"github.com/kubitre/diplom/routes"
+	"github.com/kubitre/diplom/services"
 	log "github.com/sirupsen/logrus"
 )
 
 //MasterRunnerRouter - main router for master runner
 type MasterRunnerRouter struct {
-	Router          *mux.Router
-	Config          *config.ConfigurationMasterRunner
-	SlaveMonitoring *monitor.SlaveMonitoring
+	Router  *mux.Router
+	service *services.MasterRunnerService
 }
 
-const (
-	apiConfig                = "/configuration"
-	apiWorkers               = "/workers"
-	apiAvailableWorkers      = apiWorkers + "/status"
-	apiTask                  = "/task"
-	apiTaskCreate            = apiTask + "/create"
-	apiTaskChangeOrGetStatus = apiTask + "/{taskID:\\w+}/status"
-	apiTaskReport            = apiTask + "/{taskID:\\w+}/report/{stage:\\w++}/{job:\\w+}"
-	apiTaskLogJob            = apiTask + "/{taskID:\\w+}/log/{stage:\\w+}/{job:\\w+}"
-	apiTaskLogStage          = apiTask + "/{taskID:\\w+}/log/{stage:\\w+}"
-	apiTaskLogTask           = apiTask + "/{taskID:\\w+}/log"
-
-	apiTaskLogAll = apiTask + "/getlogs"
-
-	apiHealthCheck = "/health"
-)
-
 // InitializeMasterRunnerRouter - инициализация роутера мастер ноды
-func InitializeMasterRunnerRouter(slaveMonitor *monitor.SlaveMonitoring, config *config.ConfigurationMasterRunner) *MasterRunnerRouter {
+func InitializeMasterRunnerRouter(slaveMonitor *monitor.SlaveMonitoring) *MasterRunnerRouter {
 	return &MasterRunnerRouter{
-		Router:          mux.NewRouter(),
-		SlaveMonitoring: slaveMonitor,
-		Config:          config,
+		Router: mux.NewRouter(),
 	}
 }
 
@@ -54,8 +35,8 @@ func initialRoutesSetup(router *mux.Router) *mux.Router {
 	return router
 }
 
-// createNewTask - создание новой задачи на обработку репозитория кандидата post {workID, work by spec}
-func (route *MasterRunnerRouter) createNewTask(writer http.ResponseWriter, request *http.Request) {
+// CreateNewTask - создание новой задачи на обработку репозитория кандидата post {workID, work by spec}
+func (route *MasterRunnerRouter) CreateNewTask(writer http.ResponseWriter, request *http.Request) {
 	var createNewTaskPayload payloads.CreateNewTask
 	defer request.Body.Close()
 	if err := json.NewDecoder(request.Body).Decode(&createNewTaskPayload); err != nil {
@@ -100,8 +81,8 @@ func (route *MasterRunnerRouter) createNewTask(writer http.ResponseWriter, reque
 	return
 }
 
-//changeTaskStatus - изменить текущий статус работы (остановить, запустить) post {taskID, status: [STARTED, STOPING, FINISHING, FAILED]}
-func (route *MasterRunnerRouter) changeTaskStatus(writer http.ResponseWriter, request *http.Request) {
+//ChangeTaskStatus - изменить текущий статус работы (остановить, запустить) post {taskID, status: [STARTED, STOPING, FINISHING, FAILED]}
+func (route *MasterRunnerRouter) ChangeTaskStatus(writer http.ResponseWriter, request *http.Request) {
 	var statusTaskChangePayload payloads.ChangeStatusTask
 	defer request.Body.Close()
 	if err := json.NewDecoder(request.Body).Decode(&statusTaskChangePayload); err != nil {
@@ -152,8 +133,8 @@ func (route *MasterRunnerRouter) changeTaskStatus(writer http.ResponseWriter, re
 	return
 }
 
-// получение логов с работы get ?taskID=:taskID&stage?=:nameStage
-func (route *MasterRunnerRouter) getLogTask(writer http.ResponseWriter, request *http.Request) {
+// GetLogTask - получение логов с работы get ?taskID=:taskID&stage?=:nameStage
+func (route *MasterRunnerRouter) GetLogTask(writer http.ResponseWriter, request *http.Request) {
 	// get result task by his id
 	log.Println("start working with getting log")
 	vars := mux.Vars(request)
@@ -193,8 +174,8 @@ func (route *MasterRunnerRouter) getAllLogsTree(writer http.ResponseWriter, requ
 	return
 }
 
-// создание логов с выполненной работы post {taskID, stage, logcontent}
-func (route *MasterRunnerRouter) createLogTask(writer http.ResponseWriter, request *http.Request) {
+// CreateLogTask - создание логов с выполненной работы post {taskID, stage, logcontent}
+func (route *MasterRunnerRouter) CreateLogTask(writer http.ResponseWriter, request *http.Request) {
 	log.Println("start creating new log")
 	var model models.LogsPerTask
 	if err := json.NewDecoder(request.Body).Decode(&model); err != nil {
@@ -261,8 +242,8 @@ func (route *MasterRunnerRouter) createLogTask(writer http.ResponseWriter, reque
 	return
 }
 
-// получение статуса задачи GET /taskID=:taskID
-func (route *MasterRunnerRouter) getTaskStatus(writer http.ResponseWriter, request *http.Request) {
+// GetTaskStatus - получение статуса задачи GET /taskID=:taskID
+func (route *MasterRunnerRouter) GetTaskStatus(writer http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	taskID := vars["taskID"]
 	if taskID == "" {
@@ -299,11 +280,16 @@ func (route *MasterRunnerRouter) getTaskStatus(writer http.ResponseWriter, reque
 	return
 }
 
-// получение текущего статуса всех slave нод
-func (route *MasterRunnerRouter) getStatusWorkers(writer http.ResponseWriter, request *http.Request) {
+// GetStatusWorkers -  получение текущего статуса всех slave нод
+func (route *MasterRunnerRouter) GetStatusWorkers(writer http.ResponseWriter, request *http.Request) {
 	enhancer.Response(request, writer, map[string]interface{}{
 		"available": route.SlaveMonitoring.SlavesAvailable,
 	}, http.StatusOK)
+}
+
+// GetReportsPerTask - получение отчётов по задаче
+func (route *MasterRunnerRouter) GetReportsPerTask(writer http.ResponseWriter, request *http.Request) {
+
 }
 
 // healthcheck - статус сервиса для service discovery
@@ -330,17 +316,17 @@ func (route *MasterRunnerRouter) notFoundHandler(writer http.ResponseWriter, req
 /*ConfiguringRoutes - конфигурирование маршрутов
  */
 func (route *MasterRunnerRouter) ConfiguringRoutes() {
-	route.Router.HandleFunc(apiTaskCreate, route.createNewTask).Methods(http.MethodPost)
-	route.Router.HandleFunc(apiTaskChangeOrGetStatus, route.changeTaskStatus).Methods(http.MethodPost)
-	route.Router.HandleFunc(apiTaskChangeOrGetStatus, route.getTaskStatus).Methods(http.MethodGet)
-	route.Router.HandleFunc(apiTaskLogJob, route.createLogTask).Methods(http.MethodPost)
-	route.Router.HandleFunc(apiTaskLogJob, route.getLogTask).Methods(http.MethodGet)
-	route.Router.HandleFunc(apiTaskLogStage, route.getLogTask).Methods(http.MethodGet)
-	route.Router.HandleFunc(apiTaskLogTask, route.getLogTask).Methods(http.MethodGet)
-	route.Router.HandleFunc(apiTaskLogAll, route.getAllLogsTree).Methods(http.MethodGet)
-	route.Router.HandleFunc(apiAvailableWorkers, route.getStatusWorkers).Methods(http.MethodGet)
-
-	route.Router.HandleFunc(apiHealthCheck, route.healthCheck).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiTaskCreate, route.CreateNewTask).Methods(http.MethodPost)
+	route.Router.HandleFunc(routes.ApiTaskChangeOrGetStatus, route.ChangeTaskStatus).Methods(http.MethodPost)
+	route.Router.HandleFunc(routes.ApiTaskChangeOrGetStatus, route.GetTaskStatus).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiTaskLogJob, route.CreateLogTask).Methods(http.MethodPost)
+	route.Router.HandleFunc(routes.ApiTaskLogJob, route.GetLogTask).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiTaskLogStage, route.GetLogTask).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiTaskLogTask, route.GetLogTask).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiTaskLogAll, route.getAllLogsTree).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiAvailableWorkers, route.GetStatusWorkers).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiTaskReport, route.GetReportsPerTask).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiHealthCheck, route.healthCheck).Methods(http.MethodGet)
 	route.Router.NotFoundHandler = http.HandlerFunc(route.notFoundHandler)
 	log.Println("Current configuration: ", route.Config)
 }

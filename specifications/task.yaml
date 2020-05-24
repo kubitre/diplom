@@ -17,8 +17,8 @@ jobs:
     run:
       - go test ./...
     reports:
-      - allOutInfo: "^(?P<statusTest>FAIL|ok)\\s+(?P<Placement>[\\w_\\/]+)\\s+(?P<Time>[\\w.]+)$"
-      - failedTest: "(?P<TEST>(--- FAIL: )(?P<TestName>[\\w]+)\\s+\\((?P<Time>[\\w.]+)\\))\n|(?P<Logs>\\s+(?P<fileName>[\\w_.]+):(?P<LineNumber>\\w+): (?P<LogText>.+)\n)"
+      allOutInfo: ^(?P<statusTest>FAIL|ok)\\s+(?P<Placement>[\\w_\\/]+)\\s+(?P<Time>[\\w.]+)$
+      failedTest: "(?P<TEST>(--- FAIL: )(?P<TestName>[\\w]+)\\s+\\((?P<Time>[\\w.]+)\\))\n|(?P<Logs>\\s+(?P<fileName>[\\w_.]+):(?P<LineNumber>\\w+): (?P<LogText>.+)\n)"
 
   LintProject:
     stage: lint
