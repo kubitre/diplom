@@ -165,6 +165,7 @@ func (docker *DockerExecutor) PrepareDockerEnv(neededPath map[string]string, doc
 		log.Error("can not preparing context from neededpath: ", err)
 		return err
 	}
+	os.Mkdir(buildContextPath, 0777)
 	if err := docker.prepareExecutingScript(shell); err != nil {
 		log.Error("can not create executing script. ", err)
 		return err

@@ -1,6 +1,9 @@
 package models
 
-import "github.com/ghodss/yaml"
+import (
+	"encoding/json"
+	"log"
+)
 
 type (
 	/*TaskConfig - configuration task by description jobs, stages, identifier of task*/
@@ -18,9 +21,13 @@ func (task *TaskConfig) Validate() bool {
 
 // ToByteArray - конвертация текущей модели в массив байтов для передачи по сети
 func (task *TaskConfig) ToByteArray() ([]byte, error) {
-	bts, err := yaml.Marshal(task)
+	bts, err := json.Marshal(task)
+	log.Println(string(bts))
 	if err != nil {
 		return nil, err
 	}
+	var model TaskConfig
+	json.Unmarshal(bts, &model)
+	log.Println("after unmarshaling: ", model)
 	return bts, nil
 }

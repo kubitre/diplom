@@ -13,29 +13,36 @@ import (
 	"github.com/kubitre/diplom/core"
 	"github.com/kubitre/diplom/enhancer"
 	"github.com/kubitre/diplom/models"
-	"github.com/kubitre/diplom/monitor"
 	"github.com/kubitre/diplom/payloads"
 )
 
+/*MasterRunnerService - сервис исполняющего модуля в режиме мастер*/
 type MasterRunnerService struct {
-	masterCore      *core.MasterRunnerCore
-	masterConfig    *config.ConfigurationMasterRunner
-	slaveMonitoring *monitor.SlaveMonitoring
+	masterCore   *core.MasterRunnerCore
+	masterConfig *config.ConfigurationMasterRunner
 }
 
+// GetCore - отдать текущее ядро
+func (service *MasterRunnerService) GetCore() *core.MasterRunnerCore {
+	return service.masterCore
+}
+
+/*InitializeMasterRunnerService - инициализация сервиса исполняющего модуля в режиме мастер*/
 func InitializeMasterRunnerService(configService *config.ServiceConfig, masterConfig *config.ConfigurationMasterRunner) (*MasterRunnerService, error) {
 	coreMaster, err := core.InitNewMasterRunnerCore(masterConfig, configService)
 	if err != nil {
 		return nil, err
 	}
+	coreMaster.Run()
 	return &MasterRunnerService{
 		masterCore:   coreMaster,
 		masterConfig: masterConfig,
 	}, nil
 }
 
+/*NewTask - создание задачи*/
 func (service *MasterRunnerService) NewTask(taskConfig *models.TaskConfig, request *http.Request, writer http.ResponseWriter) {
-	if errRedirect := service.slaveMonitoring.SendSlaveTask(request, writer, taskConfig); errRedirect != nil {
+	if errRedirect := service.masterCore.SlaveMoniring.SendSlaveTask(request, writer, taskConfig); errRedirect != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
 			"context": map[string]string{
 				"module":  "master_executor",
@@ -49,19 +56,10 @@ func (service *MasterRunnerService) NewTask(taskConfig *models.TaskConfig, reque
 		}, http.StatusInternalServerError)
 		return
 	}
-	enhancer.Response(request, writer, map[string]interface{}{
-		"context": map[string]string{
-			"module":  "master_executor",
-			"package": "services",
-			"func":    "NewTask",
-		},
-		"detailed": map[string]string{
-			"message": "something error",
-		},
-	}, http.StatusInternalServerError)
 	return
 }
 
+/*ChangeStatusTask - изменить статус задачи*/
 func (service *MasterRunnerService) ChangeStatusTask(statusTaskChangePayload *payloads.ChangeStatusTask, request *http.Request, writer http.ResponseWriter) {
 	if errValide := statusTaskChangePayload.Validate(); errValide != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
@@ -77,7 +75,7 @@ func (service *MasterRunnerService) ChangeStatusTask(statusTaskChangePayload *pa
 		}, http.StatusBadRequest)
 		return
 	}
-	if errUpdating := service.slaveMonitoring.TaskResultFromSlave(*statusTaskChangePayload); errUpdating != nil {
+	if errUpdating := service.masterCore.SlaveMoniring.TaskResultFromSlave(*statusTaskChangePayload); errUpdating != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
 			"context": map[string]string{
 				"module":  "master_executor",
@@ -210,7 +208,7 @@ func (service *MasterRunnerService) GetTaskStatus(request *http.Request, writer 
 		}, http.StatusBadRequest)
 		return
 	}
-	taskStatus, err := service.slaveMonitoring.GetTaskStatus(taskID)
+	taskStatus, err := service.masterCore.SlaveMoniring.GetTaskStatus(taskID)
 	if err != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
 			"context": map[string]string{
@@ -234,8 +232,31 @@ func (service *MasterRunnerService) GetTaskStatus(request *http.Request, writer 
 // GetStatusWorkers - получение текущего состояния всех воркеров
 func (service *MasterRunnerService) GetStatusWorkers(request *http.Request, writer http.ResponseWriter) {
 	enhancer.Response(request, writer, map[string]interface{}{
-		"available": service.slaveMonitoring.SlavesAvailable,
+		"available": enhancer.MergeTasksWithSlaves(service.masterCore.SlaveMoniring.SlavesAvailable, service.masterCore.SlaveMoniring.CurrentTasks),
 	}, http.StatusOK)
+}
+
+func (service *MasterRunnerService) CreateReportsPerTask(request *http.Request, writer http.ResponseWriter) {
+	var model map[string][]string
+	if err := json.NewDecoder(request.Body).Decode(&model); err != nil {
+		log.Println("can not parsed body: ", err)
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "services",
+				"func":    "CreateReportsPerTask",
+			},
+			"detailed": map[string]string{
+				"message": "can't parse body",
+				"trace":   err.Error(),
+			},
+		}, http.StatusBadRequest)
+		return
+	}
+
+	enhancer.Response(request, writer, map[string]interface{}{
+		"status": "not implemented",
+	}, http.StatusNotImplemented)
 }
 
 // GetReportPerTask - получение отчёта по задаче (в случае, если в задаче использовались extra параметры, для выделения каких-либо метрик и т.д.)

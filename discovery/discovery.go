@@ -2,7 +2,6 @@ package discovery
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	consulapi "github.com/hashicorp/consul/api"
 	"github.com/kubitre/diplom/config"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -32,6 +32,7 @@ func InitializeDiscovery(
 	configService *config.ServiceConfig) *Discovery {
 	return &Discovery{
 		CurrentServiceName: typeService + uuid.New().String(),
+		CurrentServiceType: typeService,
 		ConsulClient:       nil,
 		ServiceConfig:      configService,
 	}
@@ -39,7 +40,7 @@ func InitializeDiscovery(
 
 /*NewClientForConsule - инициализация подключения до consul*/
 func (discovery *Discovery) NewClientForConsule() error {
-	log.Println("initialize new client for consul")
+	log.Info("initialize new client for consul")
 	config := consulapi.Config{
 		Address: discovery.ServiceConfig.ConsulAddress,
 		HttpAuth: &consulapi.HttpBasicAuth{
@@ -57,12 +58,12 @@ func (discovery *Discovery) NewClientForConsule() error {
 
 /*RegisterServiceWithConsul - регистрация сервиса в consul*/
 func (discovery *Discovery) RegisterServiceWithConsul(tags []string) {
-	log.Println("start registration" + discovery.CurrentServiceName + "in consul")
+	log.Info("start registration" + discovery.CurrentServiceName + "in consul")
 	registration := new(consulapi.AgentServiceRegistration)
 	registration.ID = discovery.CurrentServiceName
 	registration.Name = discovery.CurrentServiceType
 	registration.Tags = tags
-	log.Println("registration information about out service: ", registration)
+	log.Info("registration information about out service: ", registration)
 	address := hostname()
 	registration.Address = address
 	registration.Port = discovery.ServiceConfig.APIPORT
@@ -70,28 +71,28 @@ func (discovery *Discovery) RegisterServiceWithConsul(tags []string) {
 	registration.Check.HTTP = "http://" + address + ":" + strconv.Itoa(discovery.ServiceConfig.APIPORT) + "/health"
 	registration.Check.Interval = "5s"
 	registration.Check.Timeout = "3s"
-	log.Println("registration information: ", registration.Check.HTTP)
+	log.Info("registration information: ", registration.Check.HTTP)
 	if errRegister := discovery.ConsulClient.Agent().ServiceRegister(registration); errRegister != nil {
-		log.Println("can not registering in consule: ", errRegister)
+		log.Error("can not registering in consule: ", errRegister)
 		os.Exit(1)
 	}
-	log.Println("completed registered service in consul")
+	log.Info("completed registered service in consul")
 }
 
 /*UnregisterCurrentService - удаление сервиса из consul*/
 func (discovery *Discovery) UnregisterCurrentService() {
-	log.Println("start de register service in consul")
+	log.Info("start de register service in consul")
 	if err := discovery.ConsulClient.Agent().ServiceDeregister(discovery.CurrentServiceName); err != nil {
-		log.Println(err)
+		log.Error(err)
 	}
 }
 
 /*GetService - получение текущих сервисов из consul*/
 func (discovery *Discovery) GetService(serviceName, tag string) []*consulapi.CatalogService {
-	log.Println("getting service from consul by service name: ", serviceName)
+	log.Info("getting service from consul by service name: ", serviceName)
 	allServices, _, err := discovery.ConsulClient.Catalog().Service(serviceName, tag, nil)
 	if err != nil {
-		log.Println(err)
+		log.Error(err)
 	}
 	return allServices
 }

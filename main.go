@@ -3,13 +3,17 @@ package main
 import (
 	"net/http"
 	"os"
-	"plugin"
+	"os/signal"
 	"strconv"
+	"syscall"
 
 	"github.com/gorilla/mux"
 	"github.com/kubitre/diplom/config"
 	"github.com/kubitre/diplom/core"
 	"github.com/kubitre/diplom/routes"
+	"github.com/kubitre/diplom/routes/route_default"
+	"github.com/kubitre/diplom/routes/route_portal"
+	"github.com/kubitre/diplom/services"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -22,42 +26,53 @@ func moduleCanBeStart() (serviceConfig *config.ServiceConfig) {
 }
 
 func runRouter(router *mux.Router, serviceConfig *config.ServiceConfig) {
-	if err := http.ListenAndServe(""+strconv.Itoa(serviceConfig.APIPORT), router); err != nil {
+	if err := http.ListenAndServe(":"+strconv.Itoa(serviceConfig.APIPORT), router); err != nil {
 		log.Panic("can not be starting service: ", err)
 	}
 }
 
 func initMasterRunnerRouterByPlugin(
-	runnerCore *core.MasterRunnerCore,
-	serviceConfig *config.ServiceConfig,
-	runnerConfig *config.ConfigurationMasterRunner) routes.IMaster {
-	module := ""
+	masterService *services.MasterRunnerService,
+	serviceConfig *config.ServiceConfig) routes.IMaster {
 	switch serviceConfig.ServicePlugin {
 	case config.PLUGINPORTAL:
-		module = "./routes/route_portal/router_master.so"
+		router := route_portal.InitializeMasterRunnerRouter(masterService)
+		return router
 	default:
-		module = "./routes/route_default/router_master.so"
+		router := route_default.InitializeMasterRunnerRouter(masterService)
+		return router
 	}
-	plug, err := plugin.Open(module)
-	if err != nil {
-		log.Error("can not be initialize by plugin: ", module)
-		os.Exit(1)
+}
+func handlingGracefullShutdown(sig chan os.Signal, masterCore *core.MasterRunnerCore, slaveCore *core.SlaveRunnerCore) {
+	for {
+		sg := <-sig
+		switch sg {
+		case syscall.SIGINT, syscall.SIGTERM:
+			break
+		default:
+			continue
+		}
+
+		log.Println("init kill: ", sg)
+		signal.Reset(sg)
+		break
 	}
-	symLinkRouter, err := plug.Lookup("MasterRouter")
-	if err != nil {
-		log.Error("can not find router object: ", err)
-		os.Exit(1)
+
+	log.Println("gracefull shutdown")
+	if masterCore != nil {
+		masterCore.UnregisterService()
 	}
-	runnerRouter, errAssert := symLinkRouter.(routes.IMaster)
-	if !errAssert {
-		log.Error("unexpected type from module sym")
-		os.Exit(1)
+	if slaveCore != nil {
+		slaveCore.UnregisterService()
 	}
-	return runnerRouter
+	os.Exit(0)
 }
 
 func main() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig)
 	serviceConfig := moduleCanBeStart()
+	log.SetLevel(log.InfoLevel)
 	switch serviceConfig.ServiceType {
 	case config.SERVICESLAVE:
 		runnerConfig, errConfiguring := config.ConfigureRunnerSlave()
@@ -71,20 +86,24 @@ func main() {
 		}
 		routerSlave := routes.InitNewSlaveRunnerRouter(runner)
 		routerSlave.ConfigureRouter()
-
+		log.Info("start agent as slave")
+		go handlingGracefullShutdown(sig, nil, runner)
 		runRouter(routerSlave.GetRouter(), serviceConfig)
 	default:
 		runnerConfig, errConfiguring := config.ConfiureRunnerMaster()
 		if errConfiguring != nil {
 			log.Warn("can not correct configuring: ", errConfiguring)
 		}
-		runner, err := core.InitNewMasterRunnerCore(runnerConfig, serviceConfig)
-		if err != nil {
-			log.Error("master service can not be start: ", err)
+		masterService, errService := services.InitializeMasterRunnerService(serviceConfig, runnerConfig)
+		if errService != nil {
+			log.Error("can not initialize master runner service: ", errService)
+			os.Exit(1)
 		}
-		routerMaster := initMasterRunnerRouterByPlugin(runner, serviceConfig, runnerConfig)
+		routerMaster := initMasterRunnerRouterByPlugin(masterService, serviceConfig)
 		routerMaster.ConfigureRouter()
 
+		go handlingGracefullShutdown(sig, masterService.GetCore(), nil)
+		log.Info("start agent as master")
 		runRouter(routerMaster.GetRouter(), serviceConfig)
 	}
 }

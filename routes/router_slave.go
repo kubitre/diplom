@@ -1,13 +1,13 @@
 package routes
 
 import (
-	"log"
+	"encoding/json"
 	"net/http"
 
 	"github.com/gorilla/mux"
 	"github.com/kubitre/diplom/core"
 	"github.com/kubitre/diplom/models"
-	"gopkg.in/yaml.v2"
+	log "github.com/sirupsen/logrus"
 )
 
 /*SlaveRunnerRouter - router for slave executor*/
@@ -27,18 +27,21 @@ func InitNewSlaveRunnerRouter(core *core.SlaveRunnerCore) *SlaveRunnerRouter {
 // createNewTask - создание новой задачи
 func (route *SlaveRunnerRouter) createNewTask(writer http.ResponseWriter, request *http.Request) {
 	var model models.TaskConfig
-	if errDecode := yaml.NewDecoder(request.Body).Decode(&model); errDecode != nil {
+	if errDecode := json.NewDecoder(request.Body).Decode(&model); errDecode != nil {
 		log.Println("can not parsed input task: ", errDecode)
 		writer.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	log.Println("start executing new task: ", model.TaskID)
-	if errCreateTask := route.Core.CreatePipeline(&model); errCreateTask != nil {
-		writer.WriteHeader(http.StatusBadRequest)
-		return
-	}
+	log.Println("start executing new task: ", model)
+	go func() {
+		if errCreateTask := route.Core.CreatePipeline(&model); errCreateTask != nil {
+			log.Error("can not create this")
+			return
+		}
+	}()
 	log.Println("completed prepared for task: ", model.TaskID)
 	writer.WriteHeader(http.StatusOK)
+	writer.Write([]byte("completed saved and start preparing task for working with that"))
 }
 
 func (route *SlaveRunnerRouter) healthCheck(writer http.ResponseWriter, request *http.Request) {

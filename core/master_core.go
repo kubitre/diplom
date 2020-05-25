@@ -1,12 +1,12 @@
 package core
 
 import (
-	"log"
 	"time"
 
 	"github.com/kubitre/diplom/config"
 	"github.com/kubitre/diplom/discovery"
 	"github.com/kubitre/diplom/monitor"
+	log "github.com/sirupsen/logrus"
 )
 
 /*MasterRunnerCore - ядро master ноды*/
@@ -31,7 +31,7 @@ func InitNewMasterRunnerCore(config *config.ConfigurationMasterRunner,
 }
 
 /*Run - запуск роутера, discovery, получение информации о слейвах*/
-func (core *MasterRunnerCore) Run(config *config.ConfigurationMasterRunner) {
+func (core *MasterRunnerCore) Run() {
 	core.Discovery.NewClientForConsule()
 	core.Discovery.RegisterServiceWithConsul([]string{discovery.TagMaster})
 	go core.checkerNewSlave()
@@ -40,9 +40,9 @@ func (core *MasterRunnerCore) Run(config *config.ConfigurationMasterRunner) {
 
 func (core *MasterRunnerCore) checkerNewSlave() {
 	for {
-		log.Println("start finding slaves")
+		log.Debug("start finding slaves")
 		foundedSlaves := core.Discovery.GetService(discovery.SlavePattern, discovery.TagSlave)
-		log.Println("founded services: ", foundedSlaves)
+		log.Debug("founded services: ", foundedSlaves)
 		core.SlaveMoniring.CompareAndSave(foundedSlaves)
 		time.Sleep(time.Second * 15)
 	}

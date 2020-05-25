@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/kubitre/diplom/docker_runner"
 	"github.com/kubitre/diplom/gitmod"
 	"github.com/kubitre/diplom/models"
+	"github.com/kubitre/diplom/payloads"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -67,6 +69,11 @@ func NewCoreSlaveRunner(
 		SlaveConfig:  config,
 		Discovery:    discove,
 	}, nil
+}
+
+/*UnregisterService - деаутентификация сервиса в консуле*/
+func (core *SlaveRunnerCore) UnregisterService() {
+	core.Discovery.UnregisterCurrentService()
 }
 
 /*RunWorkers - запуск пула воркеров*/
@@ -133,12 +140,12 @@ func (core *SlaveRunnerCore) CreatePipeline(taskConfig *models.TaskConfig) error
 
 /*executingJobsInStage - sxecute entry for jobs start*/
 func (core *SlaveRunnerCore) executingJobsInStage(stage string, taskConfig *models.TaskConfig) []chan int {
-	log.Println("start executing jobs in stage: ", stage)
+	log.Info("start executing jobs in stage: ", stage)
 	currentJobs := core.getJobsByStage(stage, taskConfig.Jobs, taskConfig.TaskID)
 	jobsChecked := make([]chan int, len(currentJobs))
 	for indexJob, job := range currentJobs {
 		jobsChecked[indexJob] = make(chan int, 1)
-		log.Info("current tasks for stage: ", stage, "; job: ", job)
+		log.Info("current tasks for stage: ", stage, "; job: ", job.Reports)
 		jobResult := make(chan models.LogsPerTask, 1)
 		go executingParallelJobPerStage(job, core, jobResult)
 		go checkJobResult(jobResult, job, core, jobsChecked[indexJob])
@@ -146,19 +153,70 @@ func (core *SlaveRunnerCore) executingJobsInStage(stage string, taskConfig *mode
 	return jobsChecked
 }
 
+func sendStatusTask(address, taskID, jobName, stage string, status models.TaskStatusIndx) error {
+	log.Info("start sending results to master node")
+	pay := payloads.ChangeStatusTask{
+		Stage:     stage,
+		TaskID:    taskID,
+		Job:       jobName,
+		NewStatus: int(status),
+	}
+	resultMarshal, errMarshal := json.Marshal(&pay)
+	if errMarshal != nil {
+		return errMarshal
+	}
+	r := bytes.NewReader(resultMarshal)
+	_, err := http.Post(address, "application/json", r)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func checkJobResult(jobResult chan models.LogsPerTask, job models.Job, core *SlaveRunnerCore, jobChecked chan int) {
-	log.Println("start checking result work for job: ", job.JobName)
+	log.Info("start checking result work for job: ", job.JobName)
 	result := <-jobResult
+
 	allLogs := mergeSTD(result)
-	parseSTDToReport(allLogs, job)
-	allServices := core.Discovery.GetService("master-executor", "master")
+	reports := parseSTDToReport(allLogs, job)
+	allServices := core.Discovery.GetService(discovery.MasterPattern, discovery.TagMaster)
+	if len(allServices) == 0 {
+		log.Error("not found master executor in consul. Can not sending result")
+		jobChecked <- 1
+		return
+	}
 	address := allServices[0].Address + ":" + strconv.Itoa(allServices[0].ServicePort)
 	// add Job output
+	if len(result.STDERR) > 0 {
+		sendStatusTask("http://"+address+"/task/"+job.TaskID+"/status", job.TaskID, job.JobName, job.Stage, models.FAILED)
+	} else {
+		sendStatusTask("http://"+address+"/task/"+job.TaskID+"/status", job.TaskID, job.JobName, job.Stage, models.SUCCESS)
+	}
 	if errSend := sendResultLogsToMaster("http://"+address+"/task/"+job.TaskID+"/log/"+job.Stage+"/"+job.JobName, result); errSend != nil {
 		jobChecked <- -1
 		return
 	}
+	if errSend := sendResultReportsToMaster("http://"+address+"/task"+job.TaskID+"/reports/"+job.Stage+"/"+job.JobName, reports); errSend != nil {
+		jobChecked <- -1
+		return
+	}
 	jobChecked <- 1
+}
+
+func sendResultReportsToMaster(address string, result map[string][]string) error {
+	resultMarshal, errMarshal := json.Marshal(&result)
+	if errMarshal != nil {
+		log.Println("can not marshaled response: ", errMarshal)
+		return errMarshal
+	}
+	r := bytes.NewReader(resultMarshal)
+	resp, err := http.Post(address, "application/json", r)
+	if err != nil {
+		log.Error("can not execute request", err)
+		return err
+	}
+	log.Debug("response from master: ", resp)
+	return nil
 }
 
 /*mergeSTD - merge output from containers in one. Need for create report*/
@@ -172,20 +230,23 @@ func mergeSTD(jobResult models.LogsPerTask) (result string) {
 	return
 }
 
-func parseSTDToReport(allLogs string, job models.Job) {
+func parseSTDToReport(allLogs string, job models.Job) map[string][]string {
+	result := map[string][]string{} // result in format: key: []values
 	log.Println("start extracting data from logs to report by regexp: ", job)
 	for nameRegular, rex := range job.Reports {
 		log.Println("start extracting report: ", rex, " name: ", nameRegular)
-		// parseSTD(rex, allLogs)
+		result[nameRegular] = parseSTD(rex, allLogs)
 	}
+	return result
 }
 
-// func parseSTD(regx string, logs string) {
-// 	reg := regexp.MustCompile(regx)
-// 	founded := reg.FindStringSubmatch(logs)
-// 	log.Println("founded: ", founded)
-// 	log.Println("sub groups: ", reg.SubexpNames)
-// }
+func parseSTD(regx string, logs string) []string {
+	reg := regexp.MustCompile(regx)
+	founded := reg.FindStringSubmatch(logs)
+	log.Println("founded: ", founded)
+	log.Println("sub groups: ", reg.SubexpNames())
+	return founded
+}
 
 func sendResultLogsToMaster(address string, jobResult models.LogsPerTask) error {
 	resultMarshal, errMarshal := json.Marshal(&jobResult)
@@ -248,6 +309,7 @@ func executingParallelJobPerStage(job models.Job, core *SlaveRunnerCore, jobResu
 	jobResult <- output
 }
 
+// DEPRECATED
 func (core *SlaveRunnerCore) getRepoCandidate(job models.Job) (string, error) {
 	log.Println("start cloning repository candidate")
 	path, err := core.Git.CloneRepo(job.RepositoryCandidate)
@@ -265,25 +327,26 @@ func (core *SlaveRunnerCore) getRepoCandidate(job models.Job) (string, error) {
 }
 
 func (core *SlaveRunnerCore) prepareTask(job models.Job) error {
-	pathRepo, err := core.getRepoCandidate(job)
-	if err != nil {
-		return err
-	}
+	// pathRepo, err := core.getRepoCandidate(job)
+	// if err != nil {
+	// 	return err
+	// }
 	log.Println("creating image for job: ", job.JobName)
-	log.Println("path repo: ", pathRepo)
+	// log.Println("path repo: ", pathRepo)
 	log.Println("name of docker image: ", job.TaskID+"_"+job.JobName)
-	if err := core.Docker.CreateImageMem(core.appendRepoIntoDocker(pathRepo, job),
+	if err := core.Docker.CreateImageMem(job.Image,
 		job.ShellCommands,
 		[]string{strings.ToLower(job.TaskID + "_" + job.JobName)},
 		map[string]string{}); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(pathRepo); err != nil {
-		log.Warn("can not remove repo candidate. ", err)
-	}
+	// if err := os.RemoveAll(pathRepo); err != nil {
+	// 	log.Warn("can not remove repo candidate. ", err)
+	// }
 	return nil
 }
 
+// DEPRECATED
 func (core *SlaveRunnerCore) appendRepoIntoDocker(path string, job models.Job) []string {
 	return append(job.Image, `COPY `+path+` /repoCandidate`)
 }
@@ -301,6 +364,7 @@ func (core *SlaveRunnerCore) getJobsByStage(stage string, jobs map[string]models
 			Image:               job.Image,
 			RepositoryCandidate: job.RepositoryCandidate,
 			ShellCommands:       job.ShellCommands,
+			Reports:             job.Reports,
 		}
 		if job.Stage == stage {
 			result = append(result, enhanceJob)

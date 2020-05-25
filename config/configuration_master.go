@@ -7,7 +7,8 @@ import "github.com/goreflect/gostructor"
 type ConfigurationMasterRunner struct {
 	PathToLogsWork    string `cf_env:"LOGS_WORK_PATH" cf_default:"logs"`
 	PathToReportsWork string `cf_env:"REPORT_WORK_PATH" cf_default:"reports"`
-	MaxTaskPerSlave   int    `cf_env:"MAX_TASKS_PER_SLAVE" cf_env:"10"`
+	MaxTaskPerSlave   int    `cf_env:"MAX_TASKS_PER_SLAVE" cf_default:"10"`
+	AgentID           string `cf_env:"AGENT_ID" cf_default:"default_agent"`
 }
 
 /*ConfiureRunnerMaster - конфигурировании мастер ноды через Environment variables

@@ -3,7 +3,6 @@ package monitor
 import (
 	"bytes"
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,6 +10,7 @@ import (
 	consulapi "github.com/hashicorp/consul/api"
 	"github.com/kubitre/diplom/models"
 	"github.com/kubitre/diplom/payloads"
+	log "github.com/sirupsen/logrus"
 )
 
 type (
@@ -18,17 +18,8 @@ type (
 	SlaveMonitoring struct {
 		SlavesAvailable          []Slave
 		LastUsingService         int
-		CurrentTasks             []Task
+		CurrentTasks             []models.Task
 		MaxExecutingTaskPerSlave int
-	}
-
-	/*Task - description for task*/
-	Task struct {
-		ID            string
-		SlaveIndex    int
-		Status        TaskStatus
-		TimeCreated   int64
-		TimeFinishing int64
 	}
 
 	/*Slave - configuration of slave available*/
@@ -39,14 +30,6 @@ type (
 		CurrentExecuteTasks []int // index of SlaveMonitoring.CurrentTasks
 	}
 
-	/*TaskStatus - state of task*/
-	TaskStatus struct {
-		StatusIndex TaskStatusIndx
-		Stage       string
-	}
-
-	// TaskStatusIndx - индекс текущого статуса
-	TaskStatusIndx int
 	// SlaveStatus - статус слейв модуля
 	SlaveStatus int
 )
@@ -56,19 +39,6 @@ const (
 	NOTEXISTSTAGE = "NOT_A_STAGE_()()"
 )
 
-const (
-	// QUEUED - task insert in master executor and sending to
-	QUEUED TaskStatusIndx = 1
-	// RUNNING - task start in slave executor
-	RUNNING = 2
-	// CANCELED - task was stopped by client (like default plugin or portal)
-	CANCELED = 3
-	// FAILED - task was failed
-	FAILED = 4 // task was failed
-	// SUCCESS - task was successfully
-	SUCCESS = 5 // task was successfull
-)
-
 /*InitializeNewSlaveMonitoring - инициализация части мониторинга слейв модулей*/
 func InitializeNewSlaveMonitoring(maxTaskPerSlave int) (*SlaveMonitoring, error) {
 	if maxTaskPerSlave == 0 {
@@ -76,6 +46,7 @@ func InitializeNewSlaveMonitoring(maxTaskPerSlave int) (*SlaveMonitoring, error)
 	}
 	return &SlaveMonitoring{
 		MaxExecutingTaskPerSlave: maxTaskPerSlave,
+		LastUsingService:         0,
 	}, nil
 }
 
@@ -90,7 +61,6 @@ func (slavemonitor *SlaveMonitoring) CompareAndSave(foundedServices []*consulapi
 				Port:                value.ServicePort,
 				CurrentExecuteTasks: []int{},
 			})
-			return
 		}
 	}
 }
@@ -98,11 +68,11 @@ func (slavemonitor *SlaveMonitoring) CompareAndSave(foundedServices []*consulapi
 func (slavemonitor *SlaveMonitoring) notExistService(service *consulapi.CatalogService) bool {
 	for _, slave := range slavemonitor.SlavesAvailable {
 		if slave.ID == service.ServiceID {
-			log.Println("service already exist by slave id: ", slave.ID)
+			log.Debug("service already exist by slave id: ", slave.ID)
 			return false
 		}
 	}
-	log.Println("service does not exist: ", service.ID)
+	log.Info("service does not exist: ", service.ID)
 	return true
 }
 
@@ -111,7 +81,7 @@ func (slavemonitor *SlaveMonitoring) SendSlaveTask(request *http.Request, writer
 	if newTask.TaskID == "" {
 		return errors.New("value of taskID can not be null or empty")
 	}
-	log.Println("start chosing slave executor")
+	log.Debug("start chosing slave executor")
 	// need refactoring
 	slaveID, err := slavemonitor.chooseHaveSpaceForWorkSlave()
 	if err != nil {
@@ -122,11 +92,14 @@ func (slavemonitor *SlaveMonitoring) SendSlaveTask(request *http.Request, writer
 		return err
 	}
 	rbody := bytes.NewReader(body)
-	log.Println("choosed slave: ", slaveID)
+	log.Debug("choosed slave: ", slaveID)
 	slavemonitor.addNewTask(newTask.TaskID, slaveID)
 	addressSlave := "http://" + slavemonitor.SlavesAvailable[slaveID].Address + ":" + strconv.Itoa(slavemonitor.SlavesAvailable[slaveID].Port)
-	log.Println("starting redirect to : ", addressSlave)
-	http.Post(addressSlave+"/task", "application/json", rbody)
+	log.Debug("starting redirect to : ", addressSlave)
+	_, err = http.Post(addressSlave+"/task", "application/json", rbody)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -134,8 +107,8 @@ func (slavemonitor *SlaveMonitoring) SendSlaveTask(request *http.Request, writer
 func (slavemonitor *SlaveMonitoring) TaskResultFromSlave(payload payloads.ChangeStatusTask) error {
 	for _, task := range slavemonitor.CurrentTasks {
 		if task.ID == payload.TaskID {
-			return slavemonitor.updateTaskStatus(payload.TaskID, TaskStatus{
-				StatusIndex: TaskStatusIndx(payload.NewStatus),
+			return slavemonitor.updateTaskStatus(payload.TaskID, models.TaskStatus{
+				StatusIndex: models.TaskStatusIndx(payload.NewStatus),
 				Stage:       payload.Stage,
 			})
 		}
@@ -173,21 +146,28 @@ func (slavemonitor *SlaveMonitoring) updateOneOfSlave(index int, currentExecutin
 }
 
 func (slavemonitor *SlaveMonitoring) addNewTask(taskID string, slaveID int) {
-	slavemonitor.CurrentTasks = append(slavemonitor.CurrentTasks, Task{
+	slavemonitor.CurrentTasks = append(slavemonitor.CurrentTasks, models.Task{
 		ID:          taskID,
 		TimeCreated: time.Now().Unix(),
-		Status: TaskStatus{
-			StatusIndex: QUEUED,
+		Status: models.TaskStatus{
+			StatusIndex: models.QUEUED,
 			Stage:       "",
 		},
 		SlaveIndex: slaveID,
 	})
+	slavemonitor.updateInfoInSlave(slaveID, len(slavemonitor.CurrentTasks)-1)
 }
 
-func (slavemonitor *SlaveMonitoring) updateTaskStatus(taskID string, newStatus TaskStatus) error {
+func (slavemonitor *SlaveMonitoring) updateInfoInSlave(slaveID int, taskID int) {
+	slave := slavemonitor.SlavesAvailable[slaveID]
+	slave.CurrentExecuteTasks = append(slave.CurrentExecuteTasks, taskID)
+	slavemonitor.SlavesAvailable[slaveID] = slave
+}
+
+func (slavemonitor *SlaveMonitoring) updateTaskStatus(taskID string, newStatus models.TaskStatus) error {
 	for index, task := range slavemonitor.CurrentTasks {
 		timeFinish := time.Now().Unix()
-		if newStatus.StatusIndex != FAILED && newStatus.StatusIndex != SUCCESS && newStatus.StatusIndex != CANCELED {
+		if newStatus.StatusIndex != models.FAILED && newStatus.StatusIndex != models.SUCCESS && newStatus.StatusIndex != models.CANCELED {
 			timeFinish = -1
 		}
 		if result := slavemonitor.updateTasks(task.ID, taskID, index, newStatus, timeFinish); result {
@@ -198,10 +178,10 @@ func (slavemonitor *SlaveMonitoring) updateTaskStatus(taskID string, newStatus T
 }
 
 // return true if task was updated, else return false
-func (slavemonitor *SlaveMonitoring) updateTasks(taskIDCycle string, taskIDUpdatable string, currentTaskIDx int, status TaskStatus, timeFinished int64) bool {
+func (slavemonitor *SlaveMonitoring) updateTasks(taskIDCycle string, taskIDUpdatable string, currentTaskIDx int, status models.TaskStatus, timeFinished int64) bool {
 	if taskIDCycle == taskIDUpdatable {
 		currentTask := slavemonitor.CurrentTasks[currentTaskIDx]
-		slavemonitor.CurrentTasks[currentTaskIDx] = Task{
+		slavemonitor.CurrentTasks[currentTaskIDx] = models.Task{
 			ID:            taskIDCycle,
 			TimeCreated:   currentTask.TimeCreated,
 			TimeFinishing: timeFinished,
@@ -214,7 +194,7 @@ func (slavemonitor *SlaveMonitoring) updateTasks(taskIDCycle string, taskIDUpdat
 }
 
 /*GetTaskStatus - получить текущий статус задачи по её идентификатору*/
-func (slavemonitor *SlaveMonitoring) GetTaskStatus(taskID string) (*TaskStatus, error) {
+func (slavemonitor *SlaveMonitoring) GetTaskStatus(taskID string) (*models.TaskStatus, error) {
 	for _, task := range slavemonitor.CurrentTasks {
 		if task.ID == taskID {
 			return &task.Status, nil
