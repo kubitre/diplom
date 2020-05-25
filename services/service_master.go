@@ -56,7 +56,6 @@ func (service *MasterRunnerService) NewTask(taskConfig *models.TaskConfig, reque
 		}, http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 /*ChangeStatusTask - изменить статус задачи*/
@@ -92,7 +91,6 @@ func (service *MasterRunnerService) ChangeStatusTask(statusTaskChangePayload *pa
 	enhancer.Response(request, writer, map[string]interface{}{
 		"status": "update status was completed",
 	}, http.StatusOK)
-	return
 }
 
 // GetLogsPerTask - получение логов по задаче (в случае если будет передан только taskID мержатся все логи из задачи, если будет taskID и stage - тогда только логи по стади и таске ну и по job в случае передачи taskID, stage, job)
@@ -121,7 +119,6 @@ func (service *MasterRunnerService) GetLogsPerTask(request *http.Request, writer
 	writer.Header().Set("Content-Type", mime.TypeByExtension(resultFile))
 	log.Println("start serving log: " + resultFile)
 	http.ServeFile(writer, request, resultFile)
-	return
 }
 
 // CreateLogTask - закрытый метод разрешённый только для воркеров. Создание логов по задаче (по каждой конкретной job)
@@ -188,7 +185,6 @@ func (service *MasterRunnerService) CreateLogTask(request *http.Request, writer 
 	enhancer.Response(request, writer, map[string]interface{}{
 		"status": "completed create log task by taskID and stage name",
 	}, http.StatusOK)
-	return
 }
 
 // GetTaskStatus - получить статус задачи по её идентификатору
@@ -226,7 +222,6 @@ func (service *MasterRunnerService) GetTaskStatus(request *http.Request, writer 
 	enhancer.Response(request, writer, map[string]interface{}{
 		"status": taskStatus,
 	}, http.StatusOK)
-	return
 }
 
 // GetStatusWorkers - получение текущего состояния всех воркеров
