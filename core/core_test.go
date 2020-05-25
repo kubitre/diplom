@@ -8,15 +8,6 @@ import (
 	"github.com/kubitre/diplom/models"
 )
 
-func TestCreateNewRunnerSuccess(t *testing.T) {
-	if _, err := NewCoreSlaveRunner(&config.ConfigurationSlaveRunner{
-		AmountPullWorkers:          10,
-		AmountParallelTaskPerStage: 100,
-	}, &config.ServiceConfig{}); err != nil {
-		t.Log("not created runner." + err.Error())
-	}
-}
-
 func Test_SetupConfigurationPipeline(t *testing.T) {
 
 	runner, err := NewCoreSlaveRunner(
