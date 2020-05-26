@@ -1,0 +1,19 @@
+{
+    "env": {
+    "API_PORT": 9999,
+    "MAX_TASKS_PER_SLAVE": 10,
+    "CONSUL_ADDRESS": "127.0.0.1:8500",
+    "CONSUL_USERNAME": "kubitre",
+    "CONSUL_PASSWORD": "password",
+    "SERVICE_TYPE": "MASTER",
+    "SERVICE_PLUGIN": "DEFAULT",
+    "AGENT_ID": "default_agent",
+    "AVERAGE_TIMEOUT_PER_TASK": "1h"
+},"env2": {
+    "CONSUL_ADDRESS": "127.0.0.1:8500",
+    "CONSUL_USERNAME": "kubitre",
+    "CONSUL_PASSWORD": "password",
+    "SERVICE_TYPE": "SLAVE",
+    "AMOUNT_PARALLEL_TASK_PER_STAGE": 100,
+    "AMOUNT_PULL_WORKERS": 100
+},}

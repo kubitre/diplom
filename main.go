@@ -1,27 +1,109 @@
 package main
 
 import (
-	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
 
+	"github.com/gorilla/mux"
+	"github.com/kubitre/diplom/config"
 	"github.com/kubitre/diplom/core"
-	"github.com/kubitre/diplom/parser"
+	"github.com/kubitre/diplom/routes"
+	"github.com/kubitre/diplom/routes/route_default"
+	"github.com/kubitre/diplom/routes/route_portal"
+	"github.com/kubitre/diplom/services"
+	log "github.com/sirupsen/logrus"
 )
 
-func main() {
-	loadedFile, err := parser.TestLoadFile("./specifications/task.yaml")
+func moduleCanBeStart() (serviceConfig *config.ServiceConfig) {
+	serviceConfig, err := config.ConfigureService()
 	if err != nil {
-		log.Panic(err)
+		log.Warn(err)
 	}
-	runn, err := parser.ParseObj(loadedFile)
-	if err != nil {
-		log.Panic(err)
+	return serviceConfig
+}
+
+func runRouter(router *mux.Router, serviceConfig *config.ServiceConfig) {
+	if err := http.ListenAndServe(":"+strconv.Itoa(serviceConfig.APIPORT), router); err != nil {
+		log.Panic("can not be starting service: ", err)
 	}
-	runner, err := core.NewCoreRunner(1, nil)
-	if err != nil {
-		log.Panic(err)
+}
+
+func initMasterRunnerRouterByPlugin(
+	masterService *services.MasterRunnerService,
+	serviceConfig *config.ServiceConfig) routes.IMaster {
+	switch serviceConfig.ServicePlugin {
+	case config.PLUGINPORTAL:
+		router := route_portal.InitializeMasterRunnerRouter(masterService)
+		return router
+	default:
+		router := route_default.InitializeMasterRunnerRouter(masterService)
+		return router
 	}
-	if err := runner.CreatePipeline(runn); err != nil {
-		log.Panic(err)
+}
+func handlingGracefullShutdown(sig chan os.Signal, masterCore *core.MasterRunnerCore, slaveCore *core.SlaveRunnerCore) {
+	for {
+		sg := <-sig
+		switch sg {
+		case syscall.SIGINT, syscall.SIGTERM:
+			break
+		default:
+			continue
+		}
+
+		log.Println("init kill: ", sg)
+		signal.Reset(sg)
+		break
 	}
 
+	log.Println("gracefull shutdown")
+	if masterCore != nil {
+		masterCore.UnregisterService()
+	}
+	if slaveCore != nil {
+		slaveCore.UnregisterService()
+	}
+	os.Exit(0)
+}
+
+func main() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig)
+	serviceConfig := moduleCanBeStart()
+	log.SetLevel(log.InfoLevel)
+	switch serviceConfig.ServiceType {
+	case config.SERVICESLAVE:
+		runnerConfig, errConfiguring := config.ConfigureRunnerSlave()
+		if errConfiguring != nil {
+			log.Warn("can not correct configuring: ", errConfiguring)
+		}
+		runner, err := core.NewCoreSlaveRunner(runnerConfig, serviceConfig)
+		if err != nil {
+			log.Error("slave service can not be start: ", err)
+			os.Exit(1)
+		}
+		routerSlave := routes.InitNewSlaveRunnerRouter(runner)
+		routerSlave.ConfigureRouter()
+		log.Info("start agent as slave")
+		go handlingGracefullShutdown(sig, nil, runner)
+		runRouter(routerSlave.GetRouter(), serviceConfig)
+	default:
+		runnerConfig, errConfiguring := config.ConfiureRunnerMaster()
+		if errConfiguring != nil {
+			log.Warn("can not correct configuring: ", errConfiguring)
+		}
+		masterService, errService := services.InitializeMasterRunnerService(serviceConfig, runnerConfig)
+		if errService != nil {
+			log.Error("can not initialize master runner service: ", errService)
+			os.Exit(1)
+		}
+		routerMaster := initMasterRunnerRouterByPlugin(masterService, serviceConfig)
+		routerMaster.ConfigureRouter()
+
+		go handlingGracefullShutdown(sig, masterService.GetCore(), nil)
+		log.Info("start agent as master")
+		runRouter(routerMaster.GetRouter(), serviceConfig)
+	}
 }

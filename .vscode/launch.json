@@ -10,7 +10,17 @@
             "request": "launch",
             "mode": "auto",
             "program": "${fileDirname}",
-            "env": {},
+            "env": {
+                "API_PORT": 9999,
+                "MAX_TASKS_PER_SLAVE": 10,
+                "CONSUL_ADDRESS": "127.0.0.1:8500",
+                "CONSUL_USERNAME": "kubitre",
+                "CONSUL_PASSWORD": "password",
+                "SERVICE_TYPE": "MASTER",
+                "SERVICE_PLUGIN": "DEFAULT",
+                "AGENT_ID": "default_agent",
+                "LOGS_WORK_PATH": "logs"
+            },
             "args": [
                 "--check-go-version=false"
             ]

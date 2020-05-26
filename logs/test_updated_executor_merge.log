@@ -1,0 +1,4 @@
+file: logs/test_updated_executor/stage1/myTestNewJob.log
+_______________________________________________
+{"STDOUT":["test command secret value\n"],"STDERR":null}
+################################################
