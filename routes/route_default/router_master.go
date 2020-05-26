@@ -77,6 +77,28 @@ func (route *MasterRunnerRouterDefault) ChangeTaskStatus(writer http.ResponseWri
 	route.service.ChangeStatusTask(&statusTaskChangePayload, request, writer)
 }
 
+// ChangeJobStatus - изменить текущий статус конкретной джобы
+func (route *MasterRunnerRouterDefault) ChangeJobStatus(writer http.ResponseWriter, request *http.Request) {
+	log.Info("start change job status")
+	var statusTaskChangePayload payloads.ChangeStatusJob
+	defer request.Body.Close()
+	if err := json.NewDecoder(request.Body).Decode(&statusTaskChangePayload); err != nil {
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "routers",
+				"func":    "changeTaskStatus",
+			},
+			"detailed": map[string]string{
+				"message": "can't unmarshal into changeStatus model",
+				"trace":   err.Error(),
+			},
+		}, http.StatusBadRequest)
+		return
+	}
+	route.service.ChangeStatusJob(&statusTaskChangePayload, request, writer)
+}
+
 // GetLogTask - получение логов с работы get ?taskID=:taskID&stage?=:nameStage
 func (route *MasterRunnerRouterDefault) GetLogTask(writer http.ResponseWriter, request *http.Request) {
 	log.Println("start working with getting log")
@@ -115,11 +137,24 @@ func (route *MasterRunnerRouterDefault) GetReportsPerTask(writer http.ResponseWr
 	route.service.GetReportPerTask(request, writer)
 }
 
+// CreateReportsPerTask - создание метрик на задачу из слейва
+func (route *MasterRunnerRouterDefault) CreateReportsPerTask(writer http.ResponseWriter, request *http.Request) {
+	enhancer.Response(request, writer, map[string]interface{}{
+		"status": "not implemented",
+	}, http.StatusNotImplemented)
+}
+
 // healthcheck - статус сервиса для service discovery
 func (route *MasterRunnerRouterDefault) healthCheck(writer http.ResponseWriter, request *http.Request) {
 	// implement logic for return current running works and amount slaves
 	writer.WriteHeader(http.StatusOK)
 	writer.Write([]byte("status is running"))
+}
+
+func (route *MasterRunnerRouterDefault) removeLogsPerTask(writer http.ResponseWriter, request *http.Request) {
+	enhancer.Response(request, writer, map[string]interface{}{
+		"status": "not implemented",
+	}, http.StatusNotImplemented)
 }
 
 // обработка неизвестных запросов
@@ -142,13 +177,16 @@ func (route *MasterRunnerRouterDefault) ConfigureRouter() {
 	route.Router.HandleFunc(routes.ApiTaskCreate, route.CreateNewTask).Methods(http.MethodPost)
 	route.Router.HandleFunc(routes.ApiTaskChangeOrGetStatus, route.ChangeTaskStatus).Methods(http.MethodPost)
 	route.Router.HandleFunc(routes.ApiTaskChangeOrGetStatus, route.GetTaskStatus).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiJobChangeOrGetStatus, route.ChangeJobStatus).Methods(http.MethodPost)
 	route.Router.HandleFunc(routes.ApiTaskLogJob, route.CreateLogTask).Methods(http.MethodPost)
 	route.Router.HandleFunc(routes.ApiTaskLogJob, route.GetLogTask).Methods(http.MethodGet)
 	route.Router.HandleFunc(routes.ApiTaskLogStage, route.GetLogTask).Methods(http.MethodGet)
 	route.Router.HandleFunc(routes.ApiTaskLogTask, route.GetLogTask).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiTaskLogTask, route.removeLogsPerTask).Methods(http.MethodDelete) // удаление логов задачи
 	route.Router.HandleFunc(routes.ApiTaskLogAll, route.getAllLogsTree).Methods(http.MethodGet)
 	route.Router.HandleFunc(routes.ApiAvailableWorkers, route.GetStatusWorkers).Methods(http.MethodGet)
 	route.Router.HandleFunc(routes.ApiTaskReport, route.GetReportsPerTask).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiTaskReport, route.CreateReportsPerTask).Methods(http.MethodPost) // создание отчёта по задаче
 	route.Router.HandleFunc(routes.ApiHealthCheck, route.healthCheck).Methods(http.MethodGet)
 	route.Router.NotFoundHandler = http.HandlerFunc(route.notFoundHandler)
 }

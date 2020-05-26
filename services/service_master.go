@@ -93,6 +93,27 @@ func (service *MasterRunnerService) ChangeStatusTask(statusTaskChangePayload *pa
 	}, http.StatusOK)
 }
 
+// ChangeStatusJob - изменение статуса джобы
+func (service *MasterRunnerService) ChangeStatusJob(statusTaskChangePayload *payloads.ChangeStatusJob, request *http.Request, writer http.ResponseWriter) {
+	if errUpdating := service.masterCore.SlaveMoniring.JobResultFromSlave(statusTaskChangePayload); errUpdating != nil {
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "monitor",
+				"func":    "TaskResultFromSlave",
+			},
+			"detailed": map[string]string{
+				"message": "can not be update status",
+				"trace":   errUpdating.Error(),
+			},
+		}, http.StatusInternalServerError)
+		return
+	}
+	enhancer.Response(request, writer, map[string]interface{}{
+		"status": "update status was completed",
+	}, http.StatusOK)
+}
+
 // GetLogsPerTask - получение логов по задаче (в случае если будет передан только taskID мержатся все логи из задачи, если будет taskID и stage - тогда только логи по стади и таске ну и по job в случае передачи taskID, stage, job)
 func (service *MasterRunnerService) GetLogsPerTask(request *http.Request, writer http.ResponseWriter) {
 	vars := mux.Vars(request)

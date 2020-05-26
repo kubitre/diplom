@@ -42,6 +42,11 @@ func (core *MasterRunnerCore) checkerNewSlave() {
 	for {
 		log.Debug("start finding slaves")
 		foundedSlaves := core.Discovery.GetService(discovery.SlavePattern, discovery.TagSlave)
+		if foundedSlaves == nil {
+			log.Debug("not founded health service slaves")
+			time.Sleep(time.Second * 15)
+			continue
+		}
 		log.Debug("founded services: ", foundedSlaves)
 		core.SlaveMoniring.CompareAndSave(foundedSlaves)
 		time.Sleep(time.Second * 15)

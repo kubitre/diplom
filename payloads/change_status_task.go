@@ -5,11 +5,8 @@ import "errors"
 /*ChangeStatusTask - изменение текущего статуса для задачи проверки конкретного решения
  */
 type ChangeStatusTask struct {
-	TaskID       string `json:"work_id"`
-	NewStatus    int    `json:"new_status"`
-	Stage        string `json:"failed_stage"`
-	Job          string `json:"failed_job"`
-	TimeFinished int64  `json:"time_finished"`
+	TaskID    string `json:"task_id"`
+	NewStatus int    `json:"new_status"`
 }
 
 /*Validate - валидация пришедшего обновления статуса*/

@@ -5,15 +5,17 @@ type (
 	Task struct {
 		ID            string
 		SlaveIndex    int
-		Status        TaskStatus
+		StatusTask    TaskStatusIndx
+		StatusJobs    []JobStatus
 		TimeCreated   int64
 		TimeFinishing int64
 	}
 
-	/*TaskStatus - state of task*/
-	TaskStatus struct {
-		StatusIndex TaskStatusIndx
-		Stage       string
+	/*JobStatus - статус выполненной\не выполненной джобы*/
+	JobStatus struct {
+		StatusIndex   TaskStatusIndx
+		Job           string
+		TimeFinishing int64
 	}
 
 	// TaskStatusIndx - индекс текущого статуса

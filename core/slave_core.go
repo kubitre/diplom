@@ -126,6 +126,11 @@ func (core *SlaveRunnerCore) SetupConfigurationPipeline(config *models.TaskConfi
 /*CreatePipeline - создание пайплайна на выполнение одной задачи*/
 func (core *SlaveRunnerCore) CreatePipeline(taskConfig *models.TaskConfig) error {
 	if taskConfig == nil {
+		addressMaster, errAddress := core.getAddressMaster()
+		if errAddress != nil {
+			return errAddress
+		}
+		sendStatusTask("http://"+addressMaster+"/task/"+taskConfig.TaskID+"/status", taskConfig.TaskID, models.FAILED)
 		return errors.New("can not create pipeline without configuration. Please setup configuration and continue")
 	}
 	for _, stage := range taskConfig.Stages {
@@ -138,10 +143,23 @@ func (core *SlaveRunnerCore) CreatePipeline(taskConfig *models.TaskConfig) error
 	return nil
 }
 
+func (core *SlaveRunnerCore) faieldTask(taskID string) {
+	log.Info("started sending failed for task to master executor")
+	addressMaster, errAddress := core.getAddressMaster()
+	if errAddress != nil {
+		log.Error("can not get address of master executor")
+	}
+	sendStatusTask("http://"+addressMaster+"/task/"+taskID+"/status", taskID, models.FAILED)
+}
+
 /*executingJobsInStage - sxecute entry for jobs start*/
 func (core *SlaveRunnerCore) executingJobsInStage(stage string, taskConfig *models.TaskConfig) []chan int {
 	log.Info("start executing jobs in stage: ", stage)
 	currentJobs := core.getJobsByStage(stage, taskConfig.Jobs, taskConfig.TaskID)
+	if len(currentJobs) == 0 {
+		core.faieldTask(taskConfig.TaskID)
+		return nil // TODO: ADD error
+	}
 	jobsChecked := make([]chan int, len(currentJobs))
 	for indexJob, job := range currentJobs {
 		jobsChecked[indexJob] = make(chan int, 1)
@@ -153,12 +171,10 @@ func (core *SlaveRunnerCore) executingJobsInStage(stage string, taskConfig *mode
 	return jobsChecked
 }
 
-func sendStatusTask(address, taskID, jobName, stage string, status models.TaskStatusIndx) error {
+func sendStatusTask(address, taskID string, status models.TaskStatusIndx) error {
 	log.Info("start sending results to master node")
 	pay := payloads.ChangeStatusTask{
-		Stage:     stage,
 		TaskID:    taskID,
-		Job:       jobName,
 		NewStatus: int(status),
 	}
 	resultMarshal, errMarshal := json.Marshal(&pay)
@@ -173,24 +189,53 @@ func sendStatusTask(address, taskID, jobName, stage string, status models.TaskSt
 	return nil
 }
 
+func sendStatusJob(address, taskID, jobName string, status models.TaskStatusIndx) error {
+	log.Info("start sending job status to master node")
+	pay := payloads.ChangeStatusJob{
+		TaskID:    taskID,
+		NewStatus: int(status),
+		Job:       jobName,
+	}
+	resultMarshal, errMarshal := json.Marshal(&pay)
+	if errMarshal != nil {
+		return errMarshal
+	}
+	r := bytes.NewReader(resultMarshal)
+	_, err := http.Post(address, "application/json", r)
+	if err != nil {
+		log.Error("can not sent status to master executor")
+		return err
+	}
+	return nil
+}
+
+func (core *SlaveRunnerCore) getAddressMaster() (string, error) {
+	allServices := core.Discovery.GetService(discovery.MasterPattern, discovery.TagMaster)
+	if len(allServices) == 0 {
+		log.Error("not found master executor in consul. Can not sending result")
+		return "", errors.New("not found master executor")
+	}
+	address := allServices[0].Node.Address + ":" + strconv.Itoa(allServices[0].Service.Port)
+	return address, nil
+}
+
 func checkJobResult(jobResult chan models.LogsPerTask, job models.Job, core *SlaveRunnerCore, jobChecked chan int) {
 	log.Info("start checking result work for job: ", job.JobName)
 	result := <-jobResult
 
 	allLogs := mergeSTD(result)
 	reports := parseSTDToReport(allLogs, job)
-	allServices := core.Discovery.GetService(discovery.MasterPattern, discovery.TagMaster)
-	if len(allServices) == 0 {
+	address, errAddress := core.getAddressMaster()
+	if errAddress != nil {
 		log.Error("not found master executor in consul. Can not sending result")
-		jobChecked <- 1
-		return
+		jobChecked <- -1
 	}
-	address := allServices[0].Address + ":" + strconv.Itoa(allServices[0].ServicePort)
 	// add Job output
 	if len(result.STDERR) > 0 {
-		sendStatusTask("http://"+address+"/task/"+job.TaskID+"/status", job.TaskID, job.JobName, job.Stage, models.FAILED)
+		sendStatusJob("http://"+address+"/task/"+job.TaskID+"/status/"+job.JobName, job.TaskID, job.JobName, models.FAILED)
+		sendStatusTask("http://"+address+"/task/"+job.TaskID+"/status", job.TaskID, models.FAILED)
 	} else {
-		sendStatusTask("http://"+address+"/task/"+job.TaskID+"/status", job.TaskID, job.JobName, job.Stage, models.SUCCESS)
+		sendStatusJob("http://"+address+"/task/"+job.TaskID+"/status/"+job.JobName, job.TaskID, job.JobName, models.SUCCESS)
 	}
 	if errSend := sendResultLogsToMaster("http://"+address+"/task/"+job.TaskID+"/log/"+job.Stage+"/"+job.JobName, result); errSend != nil {
 		jobChecked <- -1

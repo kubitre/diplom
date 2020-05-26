@@ -88,8 +88,20 @@ func (discovery *Discovery) UnregisterCurrentService() {
 }
 
 /*GetService - получение текущих сервисов из consul*/
-func (discovery *Discovery) GetService(serviceName, tag string) []*consulapi.CatalogService {
+func (discovery *Discovery) GetService(serviceName, tag string) []*consulapi.ServiceEntry {
 	log.Info("getting service from consul by service name: ", serviceName)
+	allHealthServices, _, err2 := discovery.ConsulClient.Health().Service(serviceName, tag, true, nil)
+	if err2 != nil {
+		log.Error(err2)
+	}
+	if len(allHealthServices) > 0 {
+		// catalogServices := discovery.getCatalogService(serviceName, tag)
+		return allHealthServices
+	}
+	return nil
+}
+
+func (discovery *Discovery) getCatalogService(serviceName, tag string) []*consulapi.CatalogService {
 	allServices, _, err := discovery.ConsulClient.Catalog().Service(serviceName, tag, nil)
 	if err != nil {
 		log.Error(err)
