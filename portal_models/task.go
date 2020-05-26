@@ -24,7 +24,7 @@ type (
 	Job struct {
 		JobName    string   `json:"name"`
 		Dockerfile string   `json:"docker_file"`
-		Timeout    int64    `json:"timeout"`
+		Timeout    string   `json:"timeout"`
 		Metrics    []Metric `json:"metrics"`
 	}
 

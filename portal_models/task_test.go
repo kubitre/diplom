@@ -18,7 +18,7 @@ func Test_ConvertFromPortalObjectToAgentTask(t *testing.T) {
 					Job{
 						JobName:    "test1",
 						Dockerfile: "FROM ubuntu\nRUN apt update && apt install\nCMD echo \"kubitre awesome\"",
-						Timeout:    100,
+						Timeout:    "19:00:00",
 						Metrics: []Metric{
 							Metric{
 								MetricName: "checkTest",

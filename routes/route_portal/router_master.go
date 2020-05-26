@@ -84,7 +84,7 @@ func (route *MasterRunnerRouterPortal) GetLogTask(writer http.ResponseWriter, re
 	log.Println("start working with getting log")
 	vars := mux.Vars(request)
 	taskID := vars["taskID"]
-	stage := request.URL.Query().Get("job_group_name")
+	stage := request.URL.Query().Get("job_group")
 	job := request.URL.Query().Get("job")
 	log.Println("taskID: "+taskID+"stage name: "+stage, " job: ", job)
 	route.service.GetLogsPerTask(request, writer, taskID, stage, job)
