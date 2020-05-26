@@ -102,7 +102,11 @@ func (route *MasterRunnerRouterDefault) ChangeJobStatus(writer http.ResponseWrit
 // GetLogTask - получение логов с работы get ?taskID=:taskID&stage?=:nameStage
 func (route *MasterRunnerRouterDefault) GetLogTask(writer http.ResponseWriter, request *http.Request) {
 	log.Println("start working with getting log")
-	route.service.GetLogsPerTask(request, writer)
+	vars := mux.Vars(request)
+	taskID := vars["taskID"]
+	stage := vars["stage"]
+	job := vars["job"]
+	route.service.GetLogsPerTask(request, writer, taskID, stage, job)
 }
 
 // на стабилизацию
@@ -124,7 +128,22 @@ func (route *MasterRunnerRouterDefault) CreateLogTask(writer http.ResponseWriter
 
 // GetTaskStatus - получение статуса задачи GET /taskID=:taskID
 func (route *MasterRunnerRouterDefault) GetTaskStatus(writer http.ResponseWriter, request *http.Request) {
-	route.service.GetTaskStatus(request, writer)
+	vars := mux.Vars(request)
+	taskID := vars["taskID"]
+	if taskID == "" {
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "services",
+				"func":    "GetTaskStatus",
+			},
+			"detailed": map[string]string{
+				"message": "taskID can not be empty or null",
+			},
+		}, http.StatusBadRequest)
+		return
+	}
+	route.service.GetTaskStatus(request, writer, taskID)
 }
 
 // GetStatusWorkers -  получение текущего статуса всех slave нод

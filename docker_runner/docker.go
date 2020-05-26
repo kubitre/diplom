@@ -166,14 +166,16 @@ func (docker *DockerExecutor) PrepareDockerEnv(neededPath map[string]string, doc
 		return err
 	}
 	os.Mkdir(buildContextPath, 0777)
-	if err := docker.prepareExecutingScript(shell); err != nil {
-		log.Error("can not create executing script. ", err)
-		return err
-	}
+	if len(shell) > 0 {
+		if err := docker.prepareExecutingScript(shell); err != nil {
+			log.Error("can not create executing script. ", err)
+			return err
+		}
 
-	dockerF2 = append(dockerF2, "COPY "+buildContextPath+"/"+entryScript+" .")
-	dockerF2 = append(dockerF2, "ENTRYPOINT [ \"bash\", \""+entryScript+"\" ]")
-	log.Info("result dockerfile: ", dockerF2)
+		dockerF2 = append(dockerF2, "COPY "+buildContextPath+"/"+entryScript+" .")
+		dockerF2 = append(dockerF2, "ENTRYPOINT [ \"bash\", \""+entryScript+"\" ]")
+		log.Info("result dockerfile: ", dockerF2)
+	}
 
 	if err := docker.writeDockerfile(buildContextPath+"/"+dockerFileMemName, docker.preparingBytesFromDockerfile(dockerF2)); err != nil {
 		log.Error("can not write dockerfile in buildcontext path. ", err)

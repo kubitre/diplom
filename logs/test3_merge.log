@@ -1,0 +1,4 @@
+file: logs/test3/stage1/myTestNewJob.log
+_______________________________________________
+{"STDOUT":["kubitre very cool proger\n"],"STDERR":null}
+################################################

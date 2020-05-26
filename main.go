@@ -36,9 +36,11 @@ func initMasterRunnerRouterByPlugin(
 	serviceConfig *config.ServiceConfig) routes.IMaster {
 	switch serviceConfig.ServicePlugin {
 	case config.PLUGINPORTAL:
+		log.Info("runner will start with portal plugin")
 		router := route_portal.InitializeMasterRunnerRouter(masterService)
 		return router
 	default:
+		log.Info("runner will start with default plugin")
 		router := route_default.InitializeMasterRunnerRouter(masterService)
 		return router
 	}

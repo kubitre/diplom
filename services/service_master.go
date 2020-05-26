@@ -115,12 +115,7 @@ func (service *MasterRunnerService) ChangeStatusJob(statusTaskChangePayload *pay
 }
 
 // GetLogsPerTask - получение логов по задаче (в случае если будет передан только taskID мержатся все логи из задачи, если будет taskID и stage - тогда только логи по стади и таске ну и по job в случае передачи taskID, stage, job)
-func (service *MasterRunnerService) GetLogsPerTask(request *http.Request, writer http.ResponseWriter) {
-	vars := mux.Vars(request)
-	taskID := vars["taskID"]
-	stage := vars["stage"]
-	job := vars["job"]
-	log.Println("taskID: "+taskID+"stage name: "+stage, " job: ", job)
+func (service *MasterRunnerService) GetLogsPerTask(request *http.Request, writer http.ResponseWriter, taskID, stage, job string) {
 	resultFile, errPreparing := enhancer.Mergelog(service.masterConfig.PathToLogsWork, taskID, stage, job)
 	if errPreparing != nil {
 		log.Println("can not preparing log: ", errPreparing)
@@ -209,22 +204,7 @@ func (service *MasterRunnerService) CreateLogTask(request *http.Request, writer 
 }
 
 // GetTaskStatus - получить статус задачи по её идентификатору
-func (service *MasterRunnerService) GetTaskStatus(request *http.Request, writer http.ResponseWriter) {
-	vars := mux.Vars(request)
-	taskID := vars["taskID"]
-	if taskID == "" {
-		enhancer.Response(request, writer, map[string]interface{}{
-			"context": map[string]string{
-				"module":  "master_executor",
-				"package": "services",
-				"func":    "GetTaskStatus",
-			},
-			"detailed": map[string]string{
-				"message": "taskID can not be empty or null",
-			},
-		}, http.StatusBadRequest)
-		return
-	}
+func (service *MasterRunnerService) GetTaskStatus(request *http.Request, writer http.ResponseWriter, taskID string) {
 	taskStatus, err := service.masterCore.SlaveMoniring.GetTaskStatus(taskID)
 	if err != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
@@ -280,4 +260,9 @@ func (service *MasterRunnerService) GetReportPerTask(request *http.Request, writ
 	enhancer.Response(request, writer, map[string]interface{}{
 		"status": "not implemented",
 	}, http.StatusNotImplemented)
+}
+
+/*GetAgentID - получение текущего идентификатора агента*/
+func (service *MasterRunnerService) GetAgentID() string {
+	return service.masterConfig.AgentID
 }
