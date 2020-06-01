@@ -33,12 +33,7 @@ func (route *SlaveRunnerRouter) createNewTask(writer http.ResponseWriter, reques
 		return
 	}
 	log.Println("start executing new task: ", model)
-	go func() {
-		if errCreateTask := route.Core.CreatePipeline(&model); errCreateTask != nil {
-			log.Error("can not create this")
-			return
-		}
-	}()
+	route.Core.WorkerPull <- model
 	log.Println("completed prepared for task: ", model.TaskID)
 	writer.WriteHeader(http.StatusOK)
 	writer.Write([]byte("completed saved and start preparing task for working with that"))

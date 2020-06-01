@@ -19,6 +19,7 @@ type (
 		SlavesAvailable          []Slave
 		LastUsingService         int
 		CurrentTasks             []models.Task
+		History                  []models.Task // TODO: Change from currentTasks to this place
 		MaxExecutingTaskPerSlave int
 	}
 
@@ -28,6 +29,7 @@ type (
 		Address             string
 		Port                int
 		CurrentExecuteTasks []int // index of SlaveMonitoring.CurrentTasks
+		HistoryTasks        []int // index of executed tasks
 	}
 
 	// SlaveStatus - статус слейв модуля
@@ -63,6 +65,19 @@ func (slavemonitor *SlaveMonitoring) CompareAndSave(foundedServices []*consulapi
 			})
 		}
 	}
+}
+
+/*ClearNotAvailableSlaves - отчистка недоступных слейвов*/
+func (slavemonitor *SlaveMonitoring) ClearNotAvailableSlaves(available []*consulapi.ServiceEntry) {
+	result := []Slave{}
+	for _, monitoredServices := range slavemonitor.SlavesAvailable {
+		for _, availableService := range available {
+			if monitoredServices.ID == availableService.Service.ID {
+				result = append(result, monitoredServices)
+			}
+		}
+	}
+	slavemonitor.SlavesAvailable = result
 }
 
 func (slavemonitor *SlaveMonitoring) notExistService(service *consulapi.ServiceEntry) bool {
@@ -120,7 +135,7 @@ func (slavemonitor *SlaveMonitoring) SendSlaveTask(request *http.Request, writer
 func (slavemonitor *SlaveMonitoring) TaskResultFromSlave(payload payloads.ChangeStatusTask) error {
 	for _, task := range slavemonitor.CurrentTasks {
 		if task.ID == payload.TaskID {
-			return slavemonitor.updateTaskStatus(payload.TaskID, models.TaskStatusIndx(payload.NewStatus))
+			return slavemonitor.updateTaskStatus(payload.TaskID, models.TaskStatusIndx(payload.NewStatus), payload.CurrentStage)
 		}
 	}
 
@@ -187,13 +202,18 @@ func (slavemonitor *SlaveMonitoring) updateInfoInSlave(slaveID int, taskID int) 
 	slavemonitor.SlavesAvailable[slaveID] = slave
 }
 
-func (slavemonitor *SlaveMonitoring) updateTaskStatus(taskID string, newStatus models.TaskStatusIndx) error {
+func (slavemonitor *SlaveMonitoring) updateTaskStatus(taskID string, newStatus models.TaskStatusIndx, stage string) error {
 	for index, task := range slavemonitor.CurrentTasks {
 		timeFinish := time.Now().Unix()
 		if newStatus != models.FAILED && newStatus != models.SUCCESS && newStatus != models.CANCELED {
 			timeFinish = -1
 		}
-		if result := slavemonitor.updateTasks(task.ID, taskID, index, newStatus, timeFinish); result {
+		if result := slavemonitor.updateTasks(task.ID, taskID, index, newStatus, timeFinish, stage); result {
+			if newStatus == models.CANCELED || newStatus == models.FAILED || newStatus == models.SUCCESS {
+				log.Debug("starting update current task to history")
+				slavemonitor.updateHistory(taskID)
+				slavemonitor.updateExecutedTaskPerSlaves(index)
+			}
 			return nil
 		}
 	}
@@ -203,7 +223,9 @@ func (slavemonitor *SlaveMonitoring) updateTaskStatus(taskID string, newStatus m
 func (slavemonitor *SlaveMonitoring) updateJobStatus(taskID string, newStatus models.JobStatus) error {
 	for index, task := range slavemonitor.CurrentTasks {
 		timeFinish := time.Now().Unix()
+		log.Debug("Time Finish job with status: ", newStatus.StatusIndex.GetString(), " time: ", timeFinish)
 		if newStatus.StatusIndex != models.FAILED && newStatus.StatusIndex != models.SUCCESS && newStatus.StatusIndex != models.CANCELED {
+			log.Debug("change time to -1")
 			timeFinish = -1
 		}
 		if result := slavemonitor.updateJob(task.ID, taskID, index, newStatus, timeFinish); result {
@@ -215,21 +237,24 @@ func (slavemonitor *SlaveMonitoring) updateJobStatus(taskID string, newStatus mo
 
 func (slavemonitor *SlaveMonitoring) updateJob(taskID string, taskIDUpdatable string, currentTaskIDX int, jobStatus models.JobStatus, timeFinished int64) bool {
 	if taskID == taskIDUpdatable {
-		log.Info("updated job")
+		log.Info("updated job. Time: ", timeFinished)
 		currentTask := slavemonitor.CurrentTasks[currentTaskIDX]
+		log.Debug("task: ", currentTask)
 		statusPerJobs := currentTask.StatusJobs
+		log.Debug("jobs per task: ", statusPerJobs)
 		updated := false
 		for indexJob, job := range statusPerJobs {
 			if job.Job == jobStatus.Job {
 				statusPerJobs[indexJob] = models.JobStatus{
 					Job:           job.Job,
 					StatusIndex:   jobStatus.StatusIndex,
-					TimeFinishing: jobStatus.TimeFinishing,
+					TimeFinishing: timeFinished,
 				}
 				updated = true
 			}
 		}
 		if !updated {
+			jobStatus.TimeFinishing = timeFinished
 			log.Info("append job to result ")
 			statusPerJobs = append(statusPerJobs, jobStatus)
 		}
@@ -248,7 +273,7 @@ func (slavemonitor *SlaveMonitoring) updateJob(taskID string, taskIDUpdatable st
 }
 
 // return true if task was updated, else return false
-func (slavemonitor *SlaveMonitoring) updateTasks(taskIDCycle string, taskIDUpdatable string, currentTaskIDx int, status models.TaskStatusIndx, timeFinished int64) bool {
+func (slavemonitor *SlaveMonitoring) updateTasks(taskIDCycle string, taskIDUpdatable string, currentTaskIDx int, status models.TaskStatusIndx, timeFinished int64, stage string) bool {
 	if taskIDCycle == taskIDUpdatable {
 		currentTask := slavemonitor.CurrentTasks[currentTaskIDx]
 		slavemonitor.CurrentTasks[currentTaskIDx] = models.Task{
@@ -256,19 +281,49 @@ func (slavemonitor *SlaveMonitoring) updateTasks(taskIDCycle string, taskIDUpdat
 			TimeCreated:   currentTask.TimeCreated,
 			TimeFinishing: timeFinished,
 			SlaveIndex:    currentTask.SlaveIndex,
+			Stage:         stage,
 			StatusTask:    status,
 			StatusJobs:    currentTask.StatusJobs,
 		}
+
 		return true
 	}
 	return false
 }
 
+func (slavemonitor *SlaveMonitoring) updateHistory(taskID string) {
+	result := []models.Task{}
+	for _, value := range slavemonitor.CurrentTasks {
+		if value.ID == taskID {
+			slavemonitor.History = append(slavemonitor.History, value)
+		} else {
+			result = append(result, value)
+		}
+	}
+	slavemonitor.CurrentTasks = result
+}
+
+func (slavemonitor *SlaveMonitoring) updateExecutedTaskPerSlaves(indexTask int) {
+	for slaveID, slave := range slavemonitor.SlavesAvailable {
+		currentTasks := []int{}
+		currentHistroy := []int{}
+		for _, slaveTask := range slave.CurrentExecuteTasks {
+			if indexTask != slaveTask {
+				currentTasks = append(currentTasks, slaveTask)
+			} else {
+				currentHistroy = append(currentHistroy, slaveTask)
+			}
+		}
+		slavemonitor.SlavesAvailable[slaveID].CurrentExecuteTasks = currentTasks
+		slavemonitor.SlavesAvailable[slaveID].HistoryTasks = currentHistroy
+	}
+}
+
 /*GetTaskStatus - получить текущий статус задачи по её идентификатору*/
-func (slavemonitor *SlaveMonitoring) GetTaskStatus(taskID string) (*models.TaskStatusIndx, error) {
+func (slavemonitor *SlaveMonitoring) GetTaskStatus(taskID string) (*models.Task, error) {
 	for _, task := range slavemonitor.CurrentTasks {
 		if task.ID == taskID {
-			return &task.StatusTask, nil
+			return &task, nil
 		}
 	}
 	return nil, errors.New("can not get task status by undefined task")

@@ -49,6 +49,7 @@ func (core *MasterRunnerCore) checkerNewSlave() {
 		}
 		log.Debug("founded services: ", foundedSlaves)
 		core.SlaveMoniring.CompareAndSave(foundedSlaves)
+		core.SlaveMoniring.ClearNotAvailableSlaves(foundedSlaves)
 		time.Sleep(time.Second * 15)
 	}
 }

@@ -166,14 +166,16 @@ func (docker *DockerExecutor) PrepareDockerEnv(neededPath map[string]string, doc
 		return err
 	}
 	os.Mkdir(buildContextPath, 0777)
-	if err := docker.prepareExecutingScript(shell); err != nil {
-		log.Error("can not create executing script. ", err)
-		return err
-	}
+	if len(shell) > 0 {
+		if err := docker.prepareExecutingScript(shell); err != nil {
+			log.Error("can not create executing script. ", err)
+			return err
+		}
 
-	dockerF2 = append(dockerF2, "COPY "+buildContextPath+"/"+entryScript+" .")
-	dockerF2 = append(dockerF2, "ENTRYPOINT [ \"bash\", \""+entryScript+"\" ]")
-	log.Info("result dockerfile: ", dockerF2)
+		dockerF2 = append(dockerF2, "COPY "+buildContextPath+"/"+entryScript+" .")
+		dockerF2 = append(dockerF2, "ENTRYPOINT [ \"bash\", \""+entryScript+"\" ]")
+		log.Info("result dockerfile: ", dockerF2)
+	}
 
 	if err := docker.writeDockerfile(buildContextPath+"/"+dockerFileMemName, docker.preparingBytesFromDockerfile(dockerF2)); err != nil {
 		log.Error("can not write dockerfile in buildcontext path. ", err)
@@ -384,12 +386,14 @@ func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, n
 	err := docker.PrepareDockerEnv(neededPath, dockerFile, shell)
 	if err != nil {
 		log.Error("can not readed bytes from fs. " + err.Error())
+		os.RemoveAll(buildContextPath)
 		return err
 	}
 
 	resultBuffer, errCreate := docker.tar(buildContextPath)
 	if errCreate != nil {
 		log.Error("can not create tar for build context. ", errCreate)
+		os.RemoveAll(buildContextPath)
 		return err
 	}
 
@@ -403,6 +407,7 @@ func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, n
 	resp, err := docker.DockerClient.ImageBuild(ctx, dockerFileTar, buildOptions)
 	if err != nil {
 		log.Error("error while build image by dockerfile. Error: ", err.Error())
+		os.RemoveAll(buildContextPath)
 		return err
 	}
 	log.Debug("response from building image: ", resp)

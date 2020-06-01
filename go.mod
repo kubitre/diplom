@@ -19,6 +19,7 @@ require (
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/sirupsen/logrus v1.5.0
+	github.com/stretchr/testify v1.5.1
 	golang.org/x/crypto v0.0.0-20200109152110-61a87790db17 // indirect
 	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553 // indirect
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect

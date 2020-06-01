@@ -7,4 +7,5 @@ type EnhancedSlave struct {
 	Address             string
 	Port                int
 	CurrentExecuteTasks []models.Task
+	HistoryExecuted     []models.Task
 }

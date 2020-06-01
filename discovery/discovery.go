@@ -94,11 +94,7 @@ func (discovery *Discovery) GetService(serviceName, tag string) []*consulapi.Ser
 	if err2 != nil {
 		log.Error(err2)
 	}
-	if len(allHealthServices) > 0 {
-		// catalogServices := discovery.getCatalogService(serviceName, tag)
-		return allHealthServices
-	}
-	return nil
+	return allHealthServices
 }
 
 func (discovery *Discovery) getCatalogService(serviceName, tag string) []*consulapi.CatalogService {
