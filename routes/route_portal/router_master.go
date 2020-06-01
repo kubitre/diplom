@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/kubitre/diplom/enhancer"
@@ -14,6 +15,7 @@ import (
 	"github.com/kubitre/diplom/portal_models"
 	"github.com/kubitre/diplom/routes"
 	"github.com/kubitre/diplom/services"
+	"github.com/kubitre/diplom/tools"
 	"github.com/kubitre/diplom/validators"
 )
 
@@ -131,6 +133,17 @@ func (route *MasterRunnerRouterPortal) GetTaskStatus(writer http.ResponseWriter,
 		notEnhancedReports, errNotEnhanced := route.service.GetReportsTask(task.ID)
 		runnerData := map[string]string{}
 		resultData := map[string]string{}
+		if task.TimeFinishing != -1 {
+			resultData["elapsedtime"] = time.Unix(task.TimeFinishing, 0).Sub(time.Unix(task.TimeCreated, 0)).String()
+		} else {
+			resultData["elapsedtime"] = time.Now().Sub(time.Unix(task.TimeCreated, 0)).String()
+		}
+		if task.Stage == "unknown" {
+			resultData["stage"] = "not working"
+		} else {
+			resultData["stage"] = task.Stage
+		}
+
 		if errNotEnhanced != nil {
 			runnerData["reports"] = errNotEnhanced.Error()
 		} else {
@@ -138,11 +151,11 @@ func (route *MasterRunnerRouterPortal) GetTaskStatus(writer http.ResponseWriter,
 			if err != nil {
 				runnerData["reports"] = err.Error()
 			} else {
-				runnerData = reports
+				runnerData = tools.AppendMap(runnerData, reports)
 			}
+			runnerData = tools.AppendMap(runnerData, enhancer.MergeMetricsToString(notEnhancedReports))
 		}
 
-		resultData["test"] = "test"
 		statusEnhanced := portal_models.PortalTaskStatus{
 			TaskID:             task.ID,
 			TaskStatus:         task.StatusTask.GetString(),

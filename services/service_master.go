@@ -63,6 +63,9 @@ func (service *MasterRunnerService) NewTask(taskConfig *models.TaskConfig, reque
 		}, http.StatusInternalServerError)
 		return
 	}
+	enhancer.Response(request, writer, map[string]interface{}{
+		"status": "completed created task",
+	}, http.StatusOK)
 }
 
 /*ChangeStatusTask - изменить статус задачи*/

@@ -16,10 +16,18 @@ func MergeTasksWithSlaves(slaves []monitor.Slave, tasks []models.Task) []payload
 
 func mergeTasksWithSlave(slave monitor.Slave, tasks []models.Task) payloads.EnhancedSlave {
 	result := []models.Task{}
+	history := []models.Task{}
 	for _, taskID := range slave.CurrentExecuteTasks {
 		for taskid, task := range tasks {
 			if taskid == taskID {
 				result = append(result, task)
+			}
+		}
+	}
+	for _, taskID := range slave.HistoryTasks {
+		for taskid, task := range tasks {
+			if taskid == taskID {
+				history = append(result, task)
 			}
 		}
 	}
@@ -28,5 +36,6 @@ func mergeTasksWithSlave(slave monitor.Slave, tasks []models.Task) payloads.Enha
 		Address:             slave.Address,
 		Port:                slave.Port,
 		CurrentExecuteTasks: result,
+		HistoryExecuted:     history,
 	}
 }

@@ -6,6 +6,7 @@ type (
 		ID            string
 		SlaveIndex    int
 		StatusTask    TaskStatusIndx
+		Stage         string
 		StatusJobs    []JobStatus
 		TimeCreated   int64
 		TimeFinishing int64

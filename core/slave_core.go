@@ -120,9 +120,9 @@ func executor(executorID int, taskChallenge <-chan models.TaskConfig, close chan
 			log.Debug("start working with new task: ", newTask, " on worker : ", executorID)
 			if err := core.CreatePipeline(&newTask); err != nil {
 				log.Error("can not create pipeline for task. Err: ", err)
-				core.faieldTask(newTask.TaskID)
+				core.faieldTask(newTask.TaskID, "unknown")
 			} else {
-				core.successTask(newTask.TaskID)
+				core.successTask(newTask.TaskID, "unknown")
 			}
 			// send to Master node result log
 		}
@@ -157,25 +157,27 @@ func (core *SlaveRunnerCore) CreatePipeline(taskConfig *models.TaskConfig) error
 		}
 		for i := 0; i < amountJobs; i++ {
 			result := <-jobWork
-			return checkJobResult(result, core)
+			if errChecking := checkJobResult(result, core); errChecking != nil {
+				return errChecking
+			}
 		}
 	}
 	return nil
 }
 
-func (core *SlaveRunnerCore) faieldTask(taskID string) {
+func (core *SlaveRunnerCore) faieldTask(taskID, stage string) {
 	log.Debug("start send statu Failed for task to Master")
-	core.sendStatusTaskToMaster(taskID, models.FAILED)
+	core.sendStatusTaskToMaster(taskID, models.FAILED, stage)
 }
 
-func (core *SlaveRunnerCore) startTask(taskID string) {
+func (core *SlaveRunnerCore) startTask(taskID, stage string) {
 	log.Debug("start send status Running task to Master")
-	core.sendStatusTaskToMaster(taskID, models.RUNNING)
+	core.sendStatusTaskToMaster(taskID, models.RUNNING, stage)
 }
 
-func (core *SlaveRunnerCore) successTask(taskID string) {
+func (core *SlaveRunnerCore) successTask(taskID, stage string) {
 	log.Debug("start send status Success task to Master")
-	core.sendStatusTaskToMaster(taskID, models.SUCCESS)
+	core.sendStatusTaskToMaster(taskID, models.SUCCESS, stage)
 }
 
 func (core *SlaveRunnerCore) failedJob(taskID string, jobName string) {
@@ -187,13 +189,13 @@ func (core *SlaveRunnerCore) successJob(taskID, jobName string) {
 	core.sendStatusJobToMaster(taskID, jobName, models.SUCCESS)
 }
 
-func (core *SlaveRunnerCore) sendStatusTaskToMaster(taskID string, status models.TaskStatusIndx) {
+func (core *SlaveRunnerCore) sendStatusTaskToMaster(taskID string, status models.TaskStatusIndx, stage string) {
 	log.Info("started sending status for task to master executor")
 	addressMaster, errAddress := core.getAddressMaster()
 	if errAddress != nil {
 		log.Error("can not get address of master executor")
 	}
-	if errStatusTask := sendStatusTask("http://"+addressMaster+"/task/"+taskID+"/status", taskID, status); errStatusTask != nil {
+	if errStatusTask := sendStatusTask("http://"+addressMaster+"/task/"+taskID+"/status", taskID, status, stage); errStatusTask != nil {
 		log.Error("Can not send status task: ", errStatusTask)
 	}
 }
@@ -215,10 +217,10 @@ func (core *SlaveRunnerCore) executingJobsInStage(stage string, taskConfig *mode
 	log.Debug("ALL JOBS: ", taskConfig.Jobs)
 	currentJobs := core.getJobsByStage(stage, taskConfig.Jobs, taskConfig.TaskID)
 	if len(currentJobs) == 0 {
-		core.faieldTask(taskConfig.TaskID)
+		core.faieldTask(taskConfig.TaskID, "unknown")
 		return nil, 0, errors.New("can not executing task, because jobs was empty") // TODO: ADD error
 	}
-	core.startTask(taskConfig.TaskID)
+	core.startTask(taskConfig.TaskID, stage)
 	jobWork := make(chan WorkJob, len(currentJobs))
 	// jobsChecked := make(chan int, len(currentJobs))
 	// jobsResult := make(chan models.LogsPerTask, len(currentJobs))
@@ -231,11 +233,12 @@ func (core *SlaveRunnerCore) executingJobsInStage(stage string, taskConfig *mode
 	return jobWork, len(currentJobs), nil
 }
 
-func sendStatusTask(address, taskID string, status models.TaskStatusIndx) error {
+func sendStatusTask(address, taskID string, status models.TaskStatusIndx, stage string) error {
 	log.Info("start sending results to master node")
 	pay := payloads.ChangeStatusTask{
-		TaskID:    taskID,
-		NewStatus: int(status),
+		TaskID:       taskID,
+		NewStatus:    int(status),
+		CurrentStage: stage,
 	}
 	resultMarshal, errMarshal := json.Marshal(&pay)
 	if errMarshal != nil {
@@ -290,7 +293,7 @@ func (core *SlaveRunnerCore) extractLogs(workJob WorkJob) error {
 	if len(workJob.JobResukt.STDERR) > 0 {
 		log.Debug("job : ", workJob.JobName, " was failed status, because have stderrs")
 		sendStatusJob("http://"+address+"/task/"+workJob.TaskID+"/status/"+workJob.JobName, workJob.TaskID, workJob.JobName, models.FAILED)
-		core.faieldTask(workJob.TaskID)
+		core.faieldTask(workJob.TaskID, workJob.Stage)
 		return errors.New("can not send result to master executor")
 	}
 	sendStatusJob("http://"+address+"/task/"+workJob.TaskID+"/status/"+workJob.JobName, workJob.TaskID, workJob.JobName, models.SUCCESS)
@@ -304,6 +307,7 @@ func (core *SlaveRunnerCore) extractLogs(workJob WorkJob) error {
 func (core *SlaveRunnerCore) extractMetrtics(workJob WorkJob) error {
 	log.Debug("start extracting metics from logs")
 	allLogs := mergeSTD(workJob.JobResukt)
+	log.Debug("all logs: ", allLogs, " reg: ", workJob.JobMetrics)
 	reports := parseSTDToReport(allLogs, workJob.JobMetrics)
 	log.Debug("parsed metrics: ", reports)
 	address, errAddress := core.getAddressMaster()
@@ -325,7 +329,7 @@ func checkJobResult(jobWork WorkJob, core *SlaveRunnerCore) error {
 	case failJob:
 		log.Error("error while executing job. start failing task")
 		core.failedJob(jobWork.TaskID, jobWork.JobName)
-		core.faieldTask(jobWork.TaskID)
+		core.faieldTask(jobWork.TaskID, jobWork.Stage)
 		return errors.New("error while executing job. start failing task")
 	case executedJob:
 		log.Debug("success executing job. sending report per job to master")
@@ -339,7 +343,7 @@ func checkJobResult(jobWork WorkJob, core *SlaveRunnerCore) error {
 		return nil
 	default:
 		log.Error("Can not recognize status job. Send status failed")
-		core.faieldTask(jobWork.TaskID)
+		core.faieldTask(jobWork.TaskID, jobWork.Stage)
 		return errors.New("something went wrong, while executing task. Stop executing task with id: " + jobWork.TaskID)
 	}
 }
@@ -374,16 +378,18 @@ func mergeSTD(jobResult models.LogsPerTask) (result string) {
 
 func parseSTDToReport(allLogs string, jobsMetrics map[string]string) map[string][]string {
 	result := map[string][]string{} // result in format: key: []values
-	// log.Debug("start extracting data from logs to report by regexp: ")
 	for nameRegular, rex := range jobsMetrics {
 		log.Debug("start extracting report: ", rex, " name: ", nameRegular)
-		result[nameRegular] = parseSTD(rex, allLogs)
+		parsingValues := parseSTD(rex, allLogs)
+		log.Debug("parsed metrics: ", parsingValues)
+		result[nameRegular] = parsingValues
 	}
 	return result
 }
 
 func parseSTD(regx string, logs string) []string {
 	reg := regexp.MustCompile(regx)
+	log.Debug("start parsing metrics: regx: ", regx, " logs:", logs)
 	founded := reg.FindStringSubmatch(logs)
 	log.Debug("founded: ", founded)
 	return founded
@@ -434,6 +440,7 @@ func executingParallelJobPerStage(job models.Job, core *SlaveRunnerCore, workJob
 					err.Error(),
 				},
 			},
+			JobMetrics: job.Reports,
 		}
 		return
 	}
@@ -456,6 +463,7 @@ func executingParallelJobPerStage(job models.Job, core *SlaveRunnerCore, workJob
 					err.Error(),
 				},
 			},
+			JobMetrics: job.Reports,
 		}
 		return
 	}
@@ -473,6 +481,7 @@ func executingParallelJobPerStage(job models.Job, core *SlaveRunnerCore, workJob
 					err.Error(),
 				},
 			},
+			JobMetrics: job.Reports,
 		}
 		return
 	}
@@ -482,7 +491,7 @@ func executingParallelJobPerStage(job models.Job, core *SlaveRunnerCore, workJob
 	_, err = stdcopy.StdCopy(stdout, stderr, responseCloser)
 	// ADD PARSING STDOUT and STDERR
 	resultFromSTD := readSTD(stdout)
-	resultFromSTD = append(resultFromSTD, logsFromBuild...)
+	resultFromSTD = append(logsFromBuild, resultFromSTD...)
 	output := models.LogsPerTask{
 		STDERR: readSTD(stderr),
 		STDOUT: resultFromSTD,
@@ -500,15 +509,17 @@ func executingParallelJobPerStage(job models.Job, core *SlaveRunnerCore, workJob
 					err.Error(),
 				},
 			},
+			JobMetrics: job.Reports,
 		}
 		return
 	}
 	workJob <- WorkJob{
-		JobName:   job.JobName,
-		JobStatus: executedJob,
-		Stage:     job.Stage,
-		TaskID:    job.TaskID,
-		JobResukt: output,
+		JobName:    job.JobName,
+		JobStatus:  executedJob,
+		Stage:      job.Stage,
+		TaskID:     job.TaskID,
+		JobResukt:  output,
+		JobMetrics: job.Reports,
 	}
 }
 
