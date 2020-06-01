@@ -8,7 +8,7 @@ const (
 	ApiTaskCreate            = ApiTask
 	ApiTaskChangeOrGetStatus = ApiTask + "/{taskID:\\w+}/status"
 	ApiJobChangeOrGetStatus  = ApiTaskChangeOrGetStatus + "/{jobName:\\w+}"
-	ApiTaskReport            = ApiTask + "/{taskID:\\w+}/reports/{stage:\\w++}/{job:\\w+}"
+	ApiTaskReport            = ApiTask + "/{taskID:\\w+}/reports/{job:\\w+}"
 	ApiTaskLogJob            = ApiTask + "/{taskID:\\w+}/log/{stage:\\w+}/{job:\\w+}"
 	ApiTaskLogStage          = ApiTask + "/{taskID:\\w+}/log/{stage:\\w+}"
 	ApiTaskLogTask           = ApiTask + "/{taskID:\\w+}/log"

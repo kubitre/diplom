@@ -386,12 +386,14 @@ func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, n
 	err := docker.PrepareDockerEnv(neededPath, dockerFile, shell)
 	if err != nil {
 		log.Error("can not readed bytes from fs. " + err.Error())
+		os.RemoveAll(buildContextPath)
 		return err
 	}
 
 	resultBuffer, errCreate := docker.tar(buildContextPath)
 	if errCreate != nil {
 		log.Error("can not create tar for build context. ", errCreate)
+		os.RemoveAll(buildContextPath)
 		return err
 	}
 
@@ -405,6 +407,7 @@ func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, n
 	resp, err := docker.DockerClient.ImageBuild(ctx, dockerFileTar, buildOptions)
 	if err != nil {
 		log.Error("error while build image by dockerfile. Error: ", err.Error())
+		os.RemoveAll(buildContextPath)
 		return err
 	}
 	log.Debug("response from building image: ", resp)

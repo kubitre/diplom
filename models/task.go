@@ -34,3 +34,21 @@ const (
 	// SUCCESS - task was successfully
 	SUCCESS = 5 // task was successfull
 )
+
+/*GetString - строковое представление статуса*/
+func (taskStatus TaskStatusIndx) GetString() string {
+	switch taskStatus {
+	case QUEUED:
+		return "queued"
+	case RUNNING:
+		return "started"
+	case CANCELED:
+		return "canceled"
+	case FAILED:
+		return "fail"
+	case SUCCESS:
+		return "success"
+	default:
+		return "unknown"
+	}
+}

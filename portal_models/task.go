@@ -46,11 +46,27 @@ func (task *PortalTask) ConvertToAgentTask() models.TaskConfig {
 	sortGroupsByOrder(groupsJob)
 	for _, group := range groupsJob {
 		stages = append(stages, group.NameGroup)
-		jobs = task.convertJobs(group.Jobs, task.TaskID, group.NameGroup)
+		jobs = task.appendMap(jobs, task.convertJobs(group.Jobs, task.TaskID, group.NameGroup))
 	}
 	needModel.Jobs = jobs
 	needModel.Stages = stages
 	return needModel
+}
+
+func (task *PortalTask) appendMap(currentResult map[string]models.Job, newMap map[string]models.Job) map[string]models.Job {
+	enhancedResult := currentResult
+	for firstName, values := range newMap {
+		entered := false
+		for secondName := range currentResult {
+			if firstName == secondName {
+				entered = true
+			}
+		}
+		if !entered {
+			enhancedResult[firstName] = values
+		}
+	}
+	return enhancedResult
 }
 
 /*convertJobs - конвертация job в тип исполняющего модуля*/

@@ -14,6 +14,7 @@ import (
 	"github.com/kubitre/diplom/portal_models"
 	"github.com/kubitre/diplom/routes"
 	"github.com/kubitre/diplom/services"
+	"github.com/kubitre/diplom/validators"
 )
 
 //MasterRunnerRouterPortal - main router for master runner for portal adaptation
@@ -117,6 +118,7 @@ func (route *MasterRunnerRouterPortal) GetTaskStatus(writer http.ResponseWriter,
 				"module":  "master_executor",
 				"package": "services",
 				"func":    "GetTaskStatus",
+				"plugin":  "portal_hedgehog",
 			},
 			"detailed": map[string]string{
 				"message": "taskID can not be empty or null",
@@ -124,7 +126,48 @@ func (route *MasterRunnerRouterPortal) GetTaskStatus(writer http.ResponseWriter,
 		}, http.StatusBadRequest)
 		return
 	}
-	route.service.GetTaskStatus(request, writer, taskID)
+	task := route.service.GetTaskStatus(request, writer, taskID)
+	if task != nil {
+		notEnhancedReports, errNotEnhanced := route.service.GetReportsTask(task.ID)
+		runnerData := map[string]string{}
+		resultData := map[string]string{}
+		if errNotEnhanced != nil {
+			runnerData["reports"] = errNotEnhanced.Error()
+		} else {
+			reports, err := validators.ValidateMetricsForPortal(notEnhancedReports)
+			if err != nil {
+				runnerData["reports"] = err.Error()
+			} else {
+				runnerData = reports
+			}
+		}
+
+		resultData["test"] = "test"
+		statusEnhanced := portal_models.PortalTaskStatus{
+			TaskID:             task.ID,
+			TaskStatus:         task.StatusTask.GetString(),
+			UserViewResultData: resultData,
+			DeveloperOnlyData:  runnerData,
+		}
+		marshaled, errMarshaling := json.Marshal(statusEnhanced)
+		if errMarshaling != nil {
+			enhancer.Response(request, writer, map[string]interface{}{
+				"context": map[string]string{
+					"module":  "master_executor",
+					"package": "services",
+					"func":    "GetTaskStatus",
+					"plugin":  "portal_hedgehog",
+				},
+				"detailed": map[string]string{
+					"message": "taskID can not be empty or null",
+				},
+			}, http.StatusBadRequest)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
+		writer.Write(marshaled)
+	}
 }
 
 // GetStatusWorkers -  получение текущего статуса всех slave нод
@@ -134,7 +177,19 @@ func (route *MasterRunnerRouterPortal) GetStatusWorkers(writer http.ResponseWrit
 
 // GetReportsPerTask - получение отчётов по задаче
 func (route *MasterRunnerRouterPortal) GetReportsPerTask(writer http.ResponseWriter, request *http.Request) {
-	route.service.GetReportPerTask(request, writer)
+	metrics := route.service.GetReportPerTask(request, writer)
+	enhancedMetrics, errorValidating := validators.ValidateMetricsForPortal(metrics)
+	if errorValidating != nil {
+		log.Println("can not validated metrics: ", enhancedMetrics)
+		enhancer.Response(request, writer, map[string]interface{}{
+			"status": "bad validating metrics",
+			"trace":  errorValidating.Error(),
+		}, http.StatusConflict)
+		return
+	}
+	enhancer.Response(request, writer, map[string]interface{}{
+		"data": enhancedMetrics,
+	}, http.StatusOK)
 }
 
 // healthcheck - статус сервиса для service discovery
@@ -161,8 +216,37 @@ func (route *MasterRunnerRouterPortal) notFoundHandler(writer http.ResponseWrite
 		},
 		"detailed": map[string]string{
 			"message": "not founded handler for you request",
+			"route":   request.URL.RequestURI(),
 		},
 	}, http.StatusNotFound)
+}
+
+// CreateReportsPerTask - создание метрик на задачу из слейва
+func (route *MasterRunnerRouterPortal) CreateReportsPerTask(writer http.ResponseWriter, request *http.Request) {
+	log.Println("start creating reports")
+	route.service.CreateReportsPerTask(request, writer)
+}
+
+// ChangeJobStatus - изменить текущий статус конкретной джобы
+func (route *MasterRunnerRouterPortal) ChangeJobStatus(writer http.ResponseWriter, request *http.Request) {
+	log.Println("start change job status")
+	var statusTaskChangePayload payloads.ChangeStatusJob
+	defer request.Body.Close()
+	if err := json.NewDecoder(request.Body).Decode(&statusTaskChangePayload); err != nil {
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "routers",
+				"func":    "changeTaskStatus",
+			},
+			"detailed": map[string]string{
+				"message": "can't unmarshal into changeStatus model",
+				"trace":   err.Error(),
+			},
+		}, http.StatusBadRequest)
+		return
+	}
+	route.service.ChangeStatusJob(&statusTaskChangePayload, request, writer)
 }
 
 /*ConfigureRouter - конфигурирование маршрутов
@@ -178,6 +262,8 @@ func (route *MasterRunnerRouterPortal) ConfigureRouter() {
 	route.Router.HandleFunc(routes.ApiTaskLogAll, middlewares.CheckAgentID(route.service.GetAgentID(), http.HandlerFunc(route.getAllLogsTree))).Methods(http.MethodGet)
 	route.Router.HandleFunc(routes.ApiAvailableWorkers, middlewares.CheckAgentID(route.service.GetAgentID(), http.HandlerFunc(route.GetStatusWorkers))).Methods(http.MethodGet)
 	route.Router.HandleFunc(routes.ApiTaskReport, middlewares.CheckAgentID(route.service.GetAgentID(), http.HandlerFunc(route.GetReportsPerTask))).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiTaskReport, route.CreateReportsPerTask).Methods(http.MethodPost)
+	route.Router.HandleFunc(routes.ApiJobChangeOrGetStatus, route.ChangeJobStatus).Methods(http.MethodPost)
 	route.Router.HandleFunc(routes.ApiHealthCheck, route.healthCheck).Methods(http.MethodGet)
 	route.Router.HandleFunc("/", route.agentVerification).Methods(http.MethodGet)
 	route.Router.NotFoundHandler = http.HandlerFunc(route.notFoundHandler)

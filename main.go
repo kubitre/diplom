@@ -74,7 +74,7 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig)
 	serviceConfig := moduleCanBeStart()
-	log.SetLevel(log.InfoLevel)
+	log.SetLevel(log.DebugLevel)
 	switch serviceConfig.ServiceType {
 	case config.SERVICESLAVE:
 		runnerConfig, errConfiguring := config.ConfigureRunnerSlave()
@@ -86,6 +86,7 @@ func main() {
 			log.Error("slave service can not be start: ", err)
 			os.Exit(1)
 		}
+		runner.RunWorkers()
 		routerSlave := routes.InitNewSlaveRunnerRouter(runner)
 		routerSlave.ConfigureRouter()
 		log.Info("start agent as slave")

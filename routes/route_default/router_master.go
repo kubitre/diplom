@@ -158,9 +158,8 @@ func (route *MasterRunnerRouterDefault) GetReportsPerTask(writer http.ResponseWr
 
 // CreateReportsPerTask - создание метрик на задачу из слейва
 func (route *MasterRunnerRouterDefault) CreateReportsPerTask(writer http.ResponseWriter, request *http.Request) {
-	enhancer.Response(request, writer, map[string]interface{}{
-		"status": "not implemented",
-	}, http.StatusNotImplemented)
+	log.Println("start creating reports")
+	route.service.CreateReportsPerTask(request, writer)
 }
 
 // healthcheck - статус сервиса для service discovery
