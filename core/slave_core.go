@@ -427,7 +427,8 @@ func readSTD(buffer *bytes.Buffer) []string {
 
 func executingParallelJobPerStage(job models.Job, core *SlaveRunnerCore, workJob chan WorkJob) {
 	log.Debug("start preparing job: ", job.JobName)
-	logsFromBuild, err := core.prepareTask(job)
+	logsFromBuild, imageName, err := core.prepareTask(job)
+	defer core.removeImage(imageName)
 	if err != nil {
 		log.Error("error while preparing task. ", err)
 		workJob <- WorkJob{
@@ -468,7 +469,7 @@ func executingParallelJobPerStage(job models.Job, core *SlaveRunnerCore, workJob
 		return
 	}
 	log.Debug("running container for job")
-	responseCloser, err := core.Docker.RunContainer(containerID)
+	responseCloser, err := core.Docker.RunContainer(containerID, job.Timeout)
 	if err != nil {
 		log.Error("can not run container: ", err)
 		workJob <- WorkJob{
@@ -523,6 +524,11 @@ func executingParallelJobPerStage(job models.Job, core *SlaveRunnerCore, workJob
 	}
 }
 
+func (core *SlaveRunnerCore) removeImage(imageName string) {
+	log.Debug("REMOVE IMAGE: ", imageName)
+	core.Docker.RemoveImage(imageName)
+}
+
 // DEPRECATED
 func (core *SlaveRunnerCore) getRepoCandidate(job models.Job) (string, error) {
 	log.Println("start cloning repository candidate")
@@ -540,7 +546,7 @@ func (core *SlaveRunnerCore) getRepoCandidate(job models.Job) (string, error) {
 	return path, nil
 }
 
-func (core *SlaveRunnerCore) prepareTask(job models.Job) ([]string, error) {
+func (core *SlaveRunnerCore) prepareTask(job models.Job) ([]string, string, error) {
 	// pathRepo, err := core.getRepoCandidate(job)
 	// if err != nil {
 	// 	return err
@@ -548,16 +554,17 @@ func (core *SlaveRunnerCore) prepareTask(job models.Job) ([]string, error) {
 	log.Debug("creating image for job: ", job.JobName)
 	// log.Println("path repo: ", pathRepo)
 	// log.Println("name of docker image: ", job.TaskID+"_"+job.JobName)
-	if err := core.Docker.CreateImageMem(job.Image,
+	logsFromBuildStage, err := core.Docker.CreateImageMem(job.Image,
 		job.ShellCommands,
 		[]string{strings.ToLower(job.TaskID + "_" + job.JobName)},
-		map[string]string{}); err != nil {
-		return []string{"log from building image"}, err
+		map[string]string{})
+	if err != nil {
+		return []string{}, "", err
 	}
 	// if err := os.RemoveAll(pathRepo); err != nil {
 	// 	log.Warn("can not remove repo candidate. ", err)
 	// }
-	return []string{"log from building image"}, nil
+	return logsFromBuildStage, strings.ToLower(job.TaskID + "_" + job.JobName), nil
 }
 
 // DEPRECATED
@@ -579,6 +586,7 @@ func (core *SlaveRunnerCore) getJobsByStage(stage string, jobs map[string]models
 			RepositoryCandidate: job.RepositoryCandidate,
 			ShellCommands:       job.ShellCommands,
 			Reports:             job.Reports,
+			Timeout:             job.Timeout,
 		}
 		log.Debug("stage: ", stage, " job stage: ", job.Stage)
 		if job.Stage == stage {
