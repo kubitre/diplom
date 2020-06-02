@@ -564,7 +564,7 @@ func (core *SlaveRunnerCore) prepareTask(job models.Job) ([]string, string, erro
 	// if err := os.RemoveAll(pathRepo); err != nil {
 	// 	log.Warn("can not remove repo candidate. ", err)
 	// }
-	return logsFromBuildStage, strings.ToLower(job.TaskID + "_" + job.JobName), nil
+	return append(logsFromBuildStage, "\n\n"), strings.ToLower(job.TaskID + "_" + job.JobName), nil
 }
 
 // DEPRECATED

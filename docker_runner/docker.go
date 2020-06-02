@@ -110,10 +110,10 @@ func (docker *DockerExecutor) RunContainer(containerID string, timeout int64) (i
 			return nil, err
 		}
 	case <-statusCH:
-	case <-time.After(time.Millisecond * time.Duration(resTimeout)):
-		log.Error("container can not return reposne for timeout")
-		log.Debug("stop container")
-		return nil, errors.New("timeout for starting container")
+		// case <-time.After(time.Millisecond * time.Duration(resTimeout)):
+		// 	log.Error("container can not return reposne for timeout")
+		// 	log.Debug("stop container")
+		// 	return nil, errors.New("timeout for starting container")
 	}
 	log.Info("container start: ", containerID)
 	result := make(chan io.ReadCloser, 1)
