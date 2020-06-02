@@ -2,6 +2,7 @@ package docker_runner
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -12,12 +13,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/jsonmessage"
-	"github.com/docker/docker/pkg/term"
 	"github.com/docker/go-connections/nat"
 	"github.com/kubitre/diplom/models"
 	"github.com/kubitre/diplom/tools"
@@ -91,7 +91,14 @@ func (docker *DockerExecutor) CreateContainer(payload *models.ContainerCreatePay
 	return repsCreating.ID, nil
 }
 
-func (docker *DockerExecutor) RunContainer(containerID string) (io.ReadCloser, error) {
+/*RunContainer - запуск контейнера*/
+func (docker *DockerExecutor) RunContainer(containerID string, timeout int64) (io.ReadCloser, error) {
+	log.Debug("I'm here. Enter timeout: ", timeout)
+	resTimeout := int64(50000)
+	if timeout > 0 {
+		resTimeout = timeout
+	}
+	log.Debug("Run container for amount ms: ", resTimeout, " ContainerID: ", containerID)
 	ctx := context.Background()
 	if errStart := docker.DockerClient.ContainerStart(ctx, containerID, types.ContainerStartOptions{}); errStart != nil {
 		return nil, errStart
@@ -103,19 +110,48 @@ func (docker *DockerExecutor) RunContainer(containerID string) (io.ReadCloser, e
 			return nil, err
 		}
 	case <-statusCH:
+	case <-time.After(time.Millisecond * time.Duration(resTimeout)):
+		log.Error("container can not return reposne for timeout")
+		log.Debug("stop container")
+		return nil, errors.New("timeout for starting container")
 	}
 	log.Info("container start: ", containerID)
-	response, err := docker.DockerClient.ContainerLogs(ctx, containerID, types.ContainerLogsOptions{
-		ShowStdout: true,
-		ShowStderr: true,
-		Follow:     true,
-	})
-	if err != nil {
-		log.Error("can not reading docker container logs: ", err)
-		return nil, err
-	}
+	result := make(chan io.ReadCloser, 1)
+	err := make(chan error, 1)
+	go func(containerID string, resultClose chan io.ReadCloser, resultError chan error) {
+		response, err := docker.DockerClient.ContainerLogs(ctx, containerID, types.ContainerLogsOptions{
+			ShowStdout: true,
+			ShowStderr: true,
+			Follow:     true,
+		})
+		if err != nil {
+			log.Error("can not reading docker container logs: ", err)
+			// return nil, err
+			resultError <- err
+			return
+		}
+		resultClose <- response
 
-	return response, nil
+	}(containerID, result, err)
+
+	select {
+	case res := <-result:
+		log.Debug("completed reading logs from container")
+		return res, nil
+	case err := <-err:
+		log.Error("something error while handling logs in container: ", err)
+		return nil, err
+	case <-time.After(time.Millisecond * time.Duration(resTimeout)):
+		log.Error("container can not return reposne for timeout")
+		log.Debug("stop container")
+		if errStop := docker.DockerClient.ContainerStop(ctx, containerID, nil); errStop != nil {
+			log.Error("can not stoped container: ", errStop)
+		}
+		if errRemoveContainer := docker.RemoveContainer(containerID); errRemoveContainer != nil {
+			log.Error("can not remove container: ", errRemoveContainer)
+		}
+		return nil, errors.New("container not answered for timeout")
+	}
 }
 
 func (docker *DockerExecutor) preparingBytesFromDockerfile(dockerFile []string) []byte {
@@ -381,20 +417,20 @@ func (docker *DockerExecutor) compressDir(path string) (*bytes.Buffer, error) {
 
 /*CreateImageMem - создание образа по заданному dockerfile с заданными инструкциями для выполнения + пометка образа списком тэгов
  */
-func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, neededPath map[string]string) error {
+func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, neededPath map[string]string) ([]string, error) {
 	ctx := context.Background()
 	err := docker.PrepareDockerEnv(neededPath, dockerFile, shell)
 	if err != nil {
 		log.Error("can not readed bytes from fs. " + err.Error())
 		os.RemoveAll(buildContextPath)
-		return err
+		return nil, err
 	}
 
 	resultBuffer, errCreate := docker.tar(buildContextPath)
 	if errCreate != nil {
 		log.Error("can not create tar for build context. ", errCreate)
 		os.RemoveAll(buildContextPath)
-		return err
+		return nil, err
 	}
 
 	dockerFileTar := bytes.NewReader(resultBuffer.Bytes())
@@ -404,20 +440,40 @@ func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, n
 		Dockerfile: buildContextPath + "/" + dockerFileMemName,
 		Tags:       tags,
 	}
+	log.Debug("TAGS FOR CREATING IMAGE: ", tags)
 	resp, err := docker.DockerClient.ImageBuild(ctx, dockerFileTar, buildOptions)
 	if err != nil {
 		log.Error("error while build image by dockerfile. Error: ", err.Error())
 		os.RemoveAll(buildContextPath)
-		return err
+		return nil, err
 	}
 	log.Debug("response from building image: ", resp)
-	termFd, isTerm := term.GetFdInfo(os.Stderr)
-	if err1 := jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stderr, termFd, isTerm, nil); err1 != nil {
-		return err1
-	}
+	// termFd, isTerm := term.GetFdInfo(os.Stderr)
+	// if err1 := jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stderr, termFd, isTerm, nil); err1 != nil {
+	// 	return err1
+	// }
 	os.RemoveAll(buildContextPath)
 
-	return nil
+	return docker.readLogsFromBodyCloser(resp.Body), nil
+}
+
+func (docker *DockerExecutor) readLogsFromBodyCloser(rd io.ReadCloser) []string {
+	reader := bufio.NewReader(rd)
+
+	result := []string{}
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				log.Error(err)
+				return nil
+			}
+		}
+		result = append(result, line)
+	}
+	return result
 }
 
 // func (docker *DockerExecutor) CreateImageDockerFile(dockerFilePath string, tags []string) error {
@@ -448,11 +504,23 @@ func (docker *DockerExecutor) CreateImageMem(dockerFile, shell, tags []string, n
 // 	return nil
 // }
 
+/*RemoveContainer - удаление контейнера*/
 func (docker *DockerExecutor) RemoveContainer(containerName string) error {
 	ctx := context.Background()
 	if err := docker.DockerClient.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{}); err != nil {
 		log.Error("can not remove container. " + err.Error())
 		return err
 	}
+	return nil
+}
+
+/*RemoveImage - удаление образа*/
+func (docker *DockerExecutor) RemoveImage(imageName string) error {
+	ctx := context.Background()
+	delResponse, errDelete := docker.DockerClient.ImageRemove(ctx, imageName, types.ImageRemoveOptions{})
+	if errDelete != nil {
+		return errDelete
+	}
+	log.Debug(delResponse)
 	return nil
 }

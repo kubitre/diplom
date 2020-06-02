@@ -24,7 +24,7 @@ type (
 	Job struct {
 		JobName    string   `json:"name"`
 		Dockerfile string   `json:"docker_file"`
-		Timeout    string   `json:"timeout"`
+		Timeout    int64    `json:"timeout"`
 		Metrics    []Metric `json:"metrics"`
 	}
 
@@ -85,6 +85,7 @@ func (job *Job) convertToAgent(taskID, stageName string) models.Job {
 		Reports: job.convertMetricsToMap(),
 		Image:   job.convertToImage(),
 		Stage:   stageName,
+		Timeout: job.Timeout,
 		TaskID:  taskID,
 	}
 }

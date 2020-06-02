@@ -26,8 +26,15 @@ func moduleCanBeStart() (serviceConfig *config.ServiceConfig) {
 }
 
 func runRouter(router *mux.Router, serviceConfig *config.ServiceConfig) {
-	if err := http.ListenAndServe(":"+strconv.Itoa(serviceConfig.APIPORT), router); err != nil {
-		log.Panic("can not be starting service: ", err)
+	go func(serviceConfig *config.ServiceConfig, router *mux.Router) {
+		log.Info("starting service in http mode")
+		if err := http.ListenAndServe(":"+strconv.Itoa(serviceConfig.APIPORT), router); err != nil {
+			log.Panic("can not be starting service http: ", err)
+		}
+	}(serviceConfig, router)
+	log.Info("starting service in https mode")
+	if err := http.ListenAndServeTLS(":"+strconv.Itoa(serviceConfig.APIPORT+1), "./keys/server.crt", "./keys/server.key", router); err != nil {
+		log.Panic("can not be starting service https: ", err)
 	}
 }
 

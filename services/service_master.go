@@ -49,6 +49,19 @@ func InitializeMasterRunnerService(configService *config.ServiceConfig, masterCo
 
 /*NewTask - создание задачи*/
 func (service *MasterRunnerService) NewTask(taskConfig *models.TaskConfig, request *http.Request, writer http.ResponseWriter) {
+	if exist := service.masterCore.SlaveMoniring.CheckTaskIDExist(taskConfig.TaskID); exist {
+		enhancer.Response(request, writer, map[string]interface{}{
+			"context": map[string]string{
+				"module":  "master_executor",
+				"package": "monitor",
+				"func":    "NewTask",
+			},
+			"detailed": map[string]string{
+				"message": "can not create already exist task",
+			},
+		}, http.StatusConflict)
+		return
+	}
 	if errRedirect := service.masterCore.SlaveMoniring.SendSlaveTask(request, writer, taskConfig); errRedirect != nil {
 		enhancer.Response(request, writer, map[string]interface{}{
 			"context": map[string]string{
@@ -60,7 +73,7 @@ func (service *MasterRunnerService) NewTask(taskConfig *models.TaskConfig, reque
 				"message": "can't redirect new task into slave executor",
 				"trace":   errRedirect.Error(),
 			},
-		}, http.StatusInternalServerError)
+		}, http.StatusConflict)
 		return
 	}
 	enhancer.Response(request, writer, map[string]interface{}{
@@ -95,7 +108,7 @@ func (service *MasterRunnerService) ChangeStatusTask(statusTaskChangePayload *pa
 				"message": "can not be update status",
 				"trace":   errUpdating.Error(),
 			},
-		}, http.StatusInternalServerError)
+		}, http.StatusConflict)
 		return
 	}
 	enhancer.Response(request, writer, map[string]interface{}{
@@ -116,7 +129,7 @@ func (service *MasterRunnerService) ChangeStatusJob(statusTaskChangePayload *pay
 				"message": "can not be update status",
 				"trace":   errUpdating.Error(),
 			},
-		}, http.StatusInternalServerError)
+		}, http.StatusConflict)
 		return
 	}
 	enhancer.Response(request, writer, map[string]interface{}{
@@ -139,7 +152,7 @@ func (service *MasterRunnerService) GetLogsPerTask(request *http.Request, writer
 				"message": "can not be merged logs",
 				"trace":   errPreparing.Error(),
 			},
-		}, http.StatusBadRequest)
+		}, http.StatusConflict)
 		return
 	}
 	writer.Header().Set("Content-Type", mime.TypeByExtension(resultFile))
@@ -241,7 +254,7 @@ func (service *MasterRunnerService) GetTaskStatus(request *http.Request, writer 
 				"message": "can not get task status",
 				"trace":   err.Error(),
 			},
-		}, http.StatusInternalServerError)
+		}, http.StatusConflict)
 		return nil
 	}
 	return taskStatus
@@ -250,7 +263,7 @@ func (service *MasterRunnerService) GetTaskStatus(request *http.Request, writer 
 // GetStatusWorkers - получение текущего состояния всех воркеров
 func (service *MasterRunnerService) GetStatusWorkers(request *http.Request, writer http.ResponseWriter) {
 	enhancer.Response(request, writer, map[string]interface{}{
-		"available": enhancer.MergeTasksWithSlaves(service.masterCore.SlaveMoniring.SlavesAvailable, service.masterCore.SlaveMoniring.CurrentTasks),
+		"available": enhancer.MergeTasksWithSlaves(service.masterCore.SlaveMoniring.SlavesAvailable, service.masterCore.SlaveMoniring.CurrentTasks, service.masterCore.SlaveMoniring.History),
 	}, http.StatusOK)
 }
 
