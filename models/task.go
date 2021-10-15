@@ -19,6 +19,22 @@ type (
 		TimeFinishing int64
 	}
 
+	EhancedTaskForView struct {
+		ID            string
+		SlaveIndex    int
+		StatusTask    string
+		Stage         string
+		StatusJobs    []EnhancedJobStatus
+		TimeCreated   int64
+		TimeFinishing int64
+	}
+
+	EnhancedJobStatus struct {
+		StatusIndex   string
+		Job           string
+		TimeFinishing int64
+	}
+
 	// TaskStatusIndx - индекс текущого статуса
 	TaskStatusIndx int
 )
@@ -52,4 +68,37 @@ func (taskStatus TaskStatusIndx) GetString() string {
 	default:
 		return "unknown"
 	}
+}
+
+func (jobstatus JobStatus) ConvertToPayload() EnhancedJobStatus {
+	return EnhancedJobStatus{
+		StatusIndex:   jobstatus.StatusIndex.GetString(),
+		TimeFinishing: jobstatus.TimeFinishing,
+		Job:           jobstatus.Job,
+	}
+}
+
+func (task Task) ConvertToPayload() EhancedTaskForView {
+	jobsEnhanced := []EnhancedJobStatus{}
+	for _, jobStatus := range task.StatusJobs {
+		jobsEnhanced = append(jobsEnhanced, jobStatus.ConvertToPayload())
+	}
+	return EhancedTaskForView{
+		ID:            task.ID,
+		Stage:         task.Stage,
+		SlaveIndex:    task.SlaveIndex,
+		StatusJobs:    jobsEnhanced,
+		StatusTask:    task.StatusTask.GetString(),
+		TimeCreated:   task.TimeCreated,
+		TimeFinishing: task.TimeFinishing,
+	}
+}
+
+func ConvertArrayTasks(tasks []Task) []EhancedTaskForView {
+	result := []EhancedTaskForView{}
+	for _, task := range tasks {
+		enhanced := task.ConvertToPayload()
+		result = append(result, enhanced)
+	}
+	return result
 }

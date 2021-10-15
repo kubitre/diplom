@@ -16,4 +16,6 @@ const (
 	ApiTaskLogAll = ApiTask + "/getlogs"
 
 	ApiHealthCheck = "/health"
+
+	ApiTasksView = ApiTask + "/all"
 )

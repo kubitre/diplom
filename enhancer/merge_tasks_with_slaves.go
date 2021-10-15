@@ -6,36 +6,37 @@ import (
 	"github.com/kubitre/diplom/payloads"
 )
 
-func MergeTasksWithSlaves(slaves []monitor.Slave, tasks []models.Task, history []models.Task) []payloads.EnhancedSlave {
+func MergeTasksWithSlaves(slaves []monitor.Slave, tasks []models.Task, executingTask, history []int) []payloads.EnhancedSlave {
 	result := []payloads.EnhancedSlave{}
 	for _, slave := range slaves {
-		result = append(result, mergeTasksWithSlave(slave, tasks, history))
+		result = append(result, mergeTasksWithSlave(slave, tasks, executingTask, history))
 	}
 	return result
 }
 
-func mergeTasksWithSlave(slave monitor.Slave, tasks []models.Task, historyTasks []models.Task) payloads.EnhancedSlave {
+func mergeTasksWithSlave(slave monitor.Slave, tasks []models.Task, executedTask, historyTasks []int) payloads.EnhancedSlave {
 	result := []models.Task{}
 	history := []models.Task{}
 	for _, taskID := range slave.CurrentExecuteTasks {
-		for taskid, task := range tasks {
-			if taskid == taskID {
-				result = append(result, task)
+		for _, taskIndex := range executedTask {
+			if taskIndex == taskID {
+				result = append(result, tasks[taskIndex])
 			}
 		}
 	}
 	for _, taskID := range slave.HistoryTasks {
-		for taskid, task := range historyTasks {
-			if taskid == taskID {
-				history = append(result, task)
+		for _, taskIndex := range historyTasks {
+			if taskIndex == taskID {
+				history = append(result, tasks[taskIndex])
 			}
 		}
 	}
+
 	return payloads.EnhancedSlave{
 		ID:                  slave.ID,
 		Address:             slave.Address,
 		Port:                slave.Port,
-		CurrentExecuteTasks: result,
-		HistoryExecuted:     history,
+		CurrentExecuteTasks: models.ConvertArrayTasks(result),
+		HistoryExecuted:     models.ConvertArrayTasks(history),
 	}
 }

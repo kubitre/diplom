@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/kubitre/diplom/enhancer"
 	"github.com/kubitre/diplom/middlewares"
+	"github.com/kubitre/diplom/models"
 	"github.com/kubitre/diplom/payloads"
 	"github.com/kubitre/diplom/portal_models"
 	"github.com/kubitre/diplom/routes"
@@ -262,6 +263,12 @@ func (route *MasterRunnerRouterPortal) ChangeJobStatus(writer http.ResponseWrite
 	route.service.ChangeStatusJob(&statusTaskChangePayload, request, writer)
 }
 
+func (route *MasterRunnerRouterPortal) getHistoryAndCurrentExecutingTasks(writer http.ResponseWriter, request *http.Request) {
+	enhancer.Response(request, writer, map[string]interface{}{
+		"allTasks": models.ConvertArrayTasks(route.service.GetCore().SlaveMoniring.AllTask),
+	}, http.StatusOK)
+}
+
 /*ConfigureRouter - конфигурирование маршрутов
  */
 func (route *MasterRunnerRouterPortal) ConfigureRouter() {
@@ -279,6 +286,7 @@ func (route *MasterRunnerRouterPortal) ConfigureRouter() {
 	route.Router.HandleFunc(routes.ApiJobChangeOrGetStatus, route.ChangeJobStatus).Methods(http.MethodPost)
 	route.Router.HandleFunc(routes.ApiHealthCheck, route.healthCheck).Methods(http.MethodGet)
 	route.Router.HandleFunc("/", route.agentVerification).Methods(http.MethodGet)
+	route.Router.HandleFunc(routes.ApiTasksView, route.getHistoryAndCurrentExecutingTasks).Methods(http.MethodGet)
 	route.Router.NotFoundHandler = http.HandlerFunc(route.notFoundHandler)
 }
 

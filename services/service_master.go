@@ -263,7 +263,7 @@ func (service *MasterRunnerService) GetTaskStatus(request *http.Request, writer 
 // GetStatusWorkers - получение текущего состояния всех воркеров
 func (service *MasterRunnerService) GetStatusWorkers(request *http.Request, writer http.ResponseWriter) {
 	enhancer.Response(request, writer, map[string]interface{}{
-		"available": enhancer.MergeTasksWithSlaves(service.masterCore.SlaveMoniring.SlavesAvailable, service.masterCore.SlaveMoniring.CurrentTasks, service.masterCore.SlaveMoniring.History),
+		"available": enhancer.MergeTasksWithSlaves(service.masterCore.SlaveMoniring.SlavesAvailable, service.masterCore.SlaveMoniring.AllTask, service.masterCore.SlaveMoniring.CurrentExecutingTask, service.masterCore.SlaveMoniring.History),
 	}, http.StatusOK)
 }
 
